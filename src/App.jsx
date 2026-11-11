@@ -1,8 +1,10 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { Users, Ghost, Skull, Swords, Crosshair, Download, Upload, AlertTriangle, Undo2, ScrollText, Map as MapIcon, MonitorPlay, X } from "lucide-react";
 import { RACES, CLASSES, BACKGROUNDS } from "./data/reference.js";
-import { uid, withLog, PLAYER_CHANNEL } from "./utils/helpers.js";
+import { uid, withLog, PLAYER_CHANNEL, openPlayerScreen } from "./utils/helpers.js";
 import { useCampaign } from "./hooks/useCampaign.js";
+import { RulesContext } from "./hooks/useRules.js";
+import TextDialog from "./components/ui/TextDialog.jsx";
 import Roster from "./components/entities/Roster.jsx";
 import EntityEditor from "./components/entities/EntityEditor.jsx";
 import CombatList from "./components/combat/CombatList.jsx";
@@ -42,6 +44,8 @@ export default function App() {
     setSessions,
     world,
     setWorld,
+    settings,
+    setSettings,
     updateEntity,
     loaded,
     loadError,
@@ -69,6 +73,7 @@ export default function App() {
   const [worldId, setWorldId] = useState(null);
   const [backupsOpen, setBackupsOpen] = useState(false);
   const [handout, setHandout] = useState(null); // document affiché sur l'écran joueurs
+  const [ask, setAsk] = useState(null); // fenêtre de saisie : { title, initial, okLabel, onOk }
   const importRef = useRef(null);
   const channelRef = useRef(null);
   const handoutRef = useRef(null);
@@ -92,7 +97,7 @@ export default function App() {
   const showHandout = useCallback((h) => {
     setHandout(h);
     channelRef.current?.postMessage({ handout: h });
-    if (h) window.open("?joueurs", "tdm-joueurs"); // ouvre (ou ramène) l'écran joueurs
+    if (h) openPlayerScreen();
   }, []);
 
   /* Ctrl+Z (⌘Z) annule, sauf dans un champ de saisie qui a sa propre annulation */
@@ -117,12 +122,22 @@ export default function App() {
   const current = campaigns.find((c) => c.id === currentId);
   const onCampaignMenu = async (v) => {
     if (v === "__new") {
-      const name = prompt("Nom de la nouvelle campagne ?", "Nouvelle campagne");
-      if (!name?.trim()) return;
-      await createCampaign(name.trim());
+      setAsk({
+        title: "Nom de la nouvelle campagne",
+        initial: "Nouvelle campagne",
+        okLabel: "Créer",
+        onOk: async (name) => {
+          await createCampaign(name);
+          resetView();
+        },
+      });
+      return;
     } else if (v === "__rename") {
-      const name = prompt("Nouveau nom de la campagne ?", current?.name);
-      if (name?.trim()) renameCampaign(name.trim());
+      setAsk({ title: "Renommer la campagne", initial: current?.name, okLabel: "Renommer", onOk: renameCampaign });
+      return;
+    } else if (v === "__rules") {
+      const next = settings.rules === "2024" ? "2014" : "2024";
+      if (confirm(`Passer cette campagne aux règles ${next} ?\n\nCela change les textes des états, l'épuisement et la récupération des dés de vie au repos long.`)) setSettings((s) => ({ ...s, rules: next }));
       return;
     } else if (v === "__backups") {
       setBackupsOpen(true);
@@ -174,6 +189,7 @@ export default function App() {
   const days = lastExport ? Math.floor((Date.now() - lastExport) / 86400000) : 0;
 
   return (
+    <RulesContext.Provider value={settings.rules}>
     <div className="min-h-screen" style={{ background: "var(--bg)", color: "var(--parchment)", fontFamily: "var(--body)" }}>
       {/* Listes de suggestions : saisie libre + propositions */}
       <datalist id="races">{RACES.map((r) => <option key={r} value={r} />)}</datalist>
@@ -215,7 +231,9 @@ export default function App() {
             <Crosshair size={20} style={{ color: "var(--gold)" }} />
             <h1 className="text-lg md:text-xl tracking-wide" style={{ fontFamily: "var(--display)", color: "var(--parchment)" }}>
               Table du Maître <span style={{ color: "var(--gold)" }}>·</span>{" "}
-              <span className="text-sm hidden sm:inline" style={{ color: "var(--muted)" }}>D&D 5e</span>
+              <span className="text-sm hidden sm:inline" style={{ color: "var(--muted)" }} title="Édition des règles de cette campagne (menu de campagne pour changer)">
+                D&D 5e · {settings.rules}
+              </span>
             </h1>
             <select
               value={currentId}
@@ -233,6 +251,7 @@ export default function App() {
               <option disabled>──────────</option>
               <option value="__new">＋ Nouvelle campagne…</option>
               <option value="__rename">✎ Renommer…</option>
+              <option value="__rules">⚖ Règles {settings.rules} → passer en {settings.rules === "2024" ? "2014" : "2024"}…</option>
               <option value="__backups">⟲ Copies de secours…</option>
               <option value="__delete">✕ Supprimer…</option>
             </select>
@@ -327,6 +346,8 @@ export default function App() {
       )}
 
       {backupsOpen && <BackupsDialog listBackups={listBackups} restore={restoreBackup} onClose={() => setBackupsOpen(false)} />}
+      {ask && <TextDialog {...ask} onClose={() => setAsk(null)} />}
     </div>
+    </RulesContext.Provider>
   );
 }

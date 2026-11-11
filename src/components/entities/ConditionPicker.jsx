@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { CONDITIONS, EXHAUSTION_DESC } from "../../data/reference.js";
+import { CONDITIONS, conditionDesc, exhaustionDesc } from "../../data/reference.js";
+import { useRules } from "../../hooks/useRules.js";
 import { uid, clamp } from "../../utils/helpers.js";
 import { inputCls, inputStyle } from "../ui/form.jsx";
 import Tip from "../ui/Tip.jsx";
@@ -12,6 +13,7 @@ export default function ConditionPicker({ e, update, onLog }) {
   const [customName, setCustomName] = useState("");
   const [customDesc, setCustomDesc] = useState("");
   const [showCustom, setShowCustom] = useState(false);
+  const rules = useRules();
 
   const toggle = (cid) => {
     const has = e.conditions.includes(cid);
@@ -27,7 +29,7 @@ export default function ConditionPicker({ e, update, onLog }) {
         {CONDITIONS.map((c) => {
           const on = e.conditions.includes(c.id);
           return (
-            <Tip key={c.id} text={c.desc}>
+            <Tip key={c.id} text={conditionDesc(c, rules)}>
               <button
                 onClick={() => toggle(c.id)}
                 className="rounded-full px-2 py-0.5 text-[11px] transition-all"
@@ -53,7 +55,7 @@ export default function ConditionPicker({ e, update, onLog }) {
           <button onClick={() => update({ exhaustion: clamp((e.exhaustion || 0) - 1, 0, 6) })} className="w-6 h-6 rounded-md text-sm" style={inputStyle}>
             −
           </button>
-          <Tip text={e.exhaustion > 0 ? EXHAUSTION_DESC[e.exhaustion] : "Aucun niveau d'épuisement."}>
+          <Tip text={exhaustionDesc(e.exhaustion, rules)} wide>
             <span tabIndex={0} className="w-8 text-center font-bold cursor-help" style={{ color: e.exhaustion > 0 ? "var(--blood-l)" : "var(--parchment)" }}>
               {e.exhaustion || 0}
             </span>

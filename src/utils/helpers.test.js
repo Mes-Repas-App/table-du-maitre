@@ -4,6 +4,34 @@ import assert from "node:assert/strict";
 import { applyHp, nextTurn, removeToken, rollInitiatives, rollFormula, normalizeCampaign, profBonus, newEntity, newToken } from "./helpers.js";
 import { parseAttack, critFormula, takeDamage, inTemplate, inRevealed, saveMod } from "./helpers.js";
 import { fromOpen5e } from "../data/srd.js";
+import { spendHitDie, longRest, hitDieOf, tokenInTemplate } from "./helpers.js";
+
+test("Dés de vie et repos long selon les règles 2014 / 2024", () => {
+  const guerrier = { clazz: "Guerrier", level: 6, hp: 10, hpMax: 50, tempHp: 0, abilities: { con: 14 }, hdUsed: 5 };
+  assert.equal(hitDieOf(guerrier), 10);
+  const r = spendHitDie(guerrier, () => 7); // 7 + CON 2
+  assert.deepEqual([r.heal, r.patch.hp, r.patch.hdUsed], [9, 19, 6]);
+  assert.equal(spendHitDie({ ...guerrier, abilities: { con: 3 } }, () => 1).heal, 0); // jamais négatif
+  assert.equal(longRest(guerrier, "2014").hdUsed, 2); // récupère la moitié (3)
+  assert.equal(longRest(guerrier, "2024").hdUsed, 0); // récupère tout
+  assert.equal(longRest({ ...guerrier, slots: { 1: { cur: 0, max: 3 } } }).slots[1].cur, 3);
+});
+
+test("Gabarit : un grand pion est touché par le bord de son espace", () => {
+  const c = { gridCols: 20, mapRatio: 1 };
+  const sphere = { shape: "sphere", x: 10, y: 10, size: 3 }; // 2 cases de rayon
+  const loin = { x: 65, y: 50 }; // centre à 3 cases du centre de la sphère
+  assert.ok(!tokenInTemplate(sphere, { ...loin, size: 1 }, c));
+  assert.ok(tokenInTemplate(sphere, { ...loin, size: 3 }, c)); // pion très grand (3×3)
+});
+
+test("Import : anciennes tailles de pion et règles par défaut", () => {
+  const e = { ...newEntity("monster"), id: "m" };
+  const { combats, settings } = normalizeCampaign({ entities: [e], combats: [{ tokens: [{ entityId: "m", size: 1.35 }] }] });
+  assert.equal(combats[0].tokens[0].size, 2);
+  assert.equal(settings.rules, "2024");
+  assert.equal(normalizeCampaign({ entities: [], settings: { rules: "2014" } }).settings.rules, "2014");
+});
 
 test("Attaques : lecture des lignes et critique", () => {
   assert.deepEqual(parseAttack("Épée longue : +5, 1d8+3 tranchant"), { name: "Épée longue", bonus: 5, damage: "1d8+3" });

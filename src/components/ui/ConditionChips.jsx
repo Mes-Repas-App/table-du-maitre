@@ -1,15 +1,17 @@
 import Tip from "./Tip.jsx";
-import { CONDITIONS, EXHAUSTION_DESC } from "../../data/reference.js";
+import { CONDITIONS, conditionDesc, exhaustionDesc } from "../../data/reference.js";
+import { useRules } from "../../hooks/useRules.js";
 
 /* Affiche la liste des états d'une entité sous forme de puces,
-   avec la règle complète au survol. */
+   avec la règle complète (de l'édition choisie) au survol. */
 export default function ConditionChips({ e, size = "md" }) {
+  const rules = useRules();
   const all = [
-    ...e.conditions.map((cid) => CONDITIONS.find((c) => c.id === cid)).filter(Boolean),
+    ...e.conditions.map((cid) => CONDITIONS.find((c) => c.id === cid)).filter(Boolean).map((c) => ({ ...c, desc: conditionDesc(c, rules) })),
     ...(e.customConditions || []),
   ];
   if (e.exhaustion > 0) {
-    all.push({ id: "exh", label: `Épuisement ${e.exhaustion}`, icon: "🥵", desc: EXHAUSTION_DESC[e.exhaustion] });
+    all.push({ id: "exh", label: `Épuisement ${e.exhaustion}`, icon: "🥵", desc: exhaustionDesc(e.exhaustion, rules) });
   }
   if (!all.length) return null;
   return (

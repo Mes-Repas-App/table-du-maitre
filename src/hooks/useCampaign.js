@@ -14,7 +14,7 @@ const EXPORT_EVERY = 7 * 24 * 60 * 60 * 1000; // rappel d'export hebdomadaire
 const backupKey = (id) => `__backups:${id}`;
 const exportKey = (id) => `table-du-maitre:export:${id}`;
 
-const EMPTY = { entities: [], combats: [], sessions: [], world: [] };
+const EMPTY = { entities: [], combats: [], sessions: [], world: [], settings: { rules: "2024" } };
 
 /** Mini-enveloppe IndexedDB : une clé par campagne, des centaines de Mo disponibles
     (cartes et portraits ne saturent plus la sauvegarde). */
@@ -237,6 +237,11 @@ export function useCampaign() {
       setCurrentId(others[0].id);
       await del(gone);
       await del(backupKey(gone));
+      try {
+        localStorage.removeItem(exportKey(gone));
+      } catch {
+        /* rien à faire */
+      }
     } catch (err) {
       console.error(err);
       setSaveState("error");
@@ -292,6 +297,7 @@ export function useCampaign() {
     setCombats: setters.combats,
     setSessions: setters.sessions,
     setWorld: setters.world,
+    setSettings: setters.settings,
     updateEntity,
     loaded,
     loadError,

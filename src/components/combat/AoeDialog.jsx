@@ -3,6 +3,7 @@ import { X, Flame, Dices } from "lucide-react";
 import { ABILITIES } from "../../data/reference.js";
 import { rollFormula, saveMod, takeDamage, d, fmtMod } from "../../utils/helpers.js";
 import { inputStyle } from "../ui/form.jsx";
+import { useRules } from "../../hooks/useRules.js";
 import Portrait from "../ui/Portrait.jsx";
 
 const MULTS = [
@@ -25,6 +26,7 @@ export default function AoeDialog({ pieces, initialIds, apply, onLog, onClose })
   const [half, setHalf] = useState(true);
   const [saves, setSaves] = useState({}); // id du pion → { roll, ok }
   const [mults, setMults] = useState({}); // id du pion → multiplicateur choisi à la main
+  const rules = useRules();
 
   useEffect(() => {
     const onKey = (ev) => {
@@ -64,7 +66,7 @@ export default function AoeDialog({ pieces, initialIds, apply, onLog, onClose })
   const confirm = () => {
     targets.forEach(({ t, f }) => {
       const dmg = Math.floor(value * multOf(t.id));
-      const { patch, notes } = takeDamage(f, dmg);
+      const { patch, notes } = takeDamage(f, dmg, rules);
       apply(t, patch);
       const s = saves[t.id];
       onLog(`${f.name} : -${dmg} PV${s ? ` (JS ${s.ab3} ${s.roll} : ${s.ok ? "réussi" : "raté"})` : ""} → ${patch.hp}/${f.hpMax}`);

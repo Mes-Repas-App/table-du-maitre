@@ -72,7 +72,58 @@ export function newEntity(kind) {
     spells: [], // { id, name, level (0 = sort mineur), concentration, notes }
     slots: {}, // { 1: { cur, max }, … 9 }
     relations: [], // { id, targetId, kind, note }
+    hitDie: null, // 6, 8, 10, 12 ; null = déduit de la classe
+    hdUsed: 0, // dés de vie dépensés
   };
+}
+
+/* ---------- Dés de vie et repos ---------- */
+
+const CLASS_HIT_DIE = {
+  Barbare: 12, Guerrier: 10, Paladin: 10, Rôdeur: 10,
+  Barde: 8, Clerc: 8, Druide: 8, Moine: 8, Occultiste: 8, Roublard: 8,
+  Ensorceleur: 6, Magicien: 6,
+};
+export const hitDieOf = (e) => e.hitDie || CLASS_HIT_DIE[e.clazz] || 8;
+export const hitDiceMax = (e) => Math.max(1, Number(e.level) || 1);
+
+/** Dépense un dé de vie (repos court) : 1dX + mod. de CON, jamais négatif */
+export function spendHitDie(e, rng = d) {
+  const roll = rng(hitDieOf(e));
+  const heal = Math.max(0, roll + mod(e.abilities?.con));
+  return { roll, heal, patch: { ...applyHp(e, heal), hdUsed: (e.hdUsed || 0) + 1 } };
+}
+
+const refill = (e, kinds) => ({
+  resources: (e.resources || []).map((r) => (kinds.includes(r.reset) ? { ...r, cur: r.max } : r)),
+});
+
+export const shortRest = (e) => refill(e, ["short"]);
+
+/** Repos long. 2014 : récupère la moitié des dés de vie ; 2024 : tous. */
+export function longRest(e, rules = "2024") {
+  const used = e.hdUsed || 0;
+  return {
+    ...refill(e, ["short", "long"]),
+    hp: e.hpMax,
+    tempHp: 0,
+    exhaustion: Math.max(0, (e.exhaustion || 0) - 1),
+    deathSaves: { ok: 0, ko: 0 },
+    slots: Object.fromEntries(Object.entries(e.slots || {}).map(([l, s]) => [l, { ...s, cur: s.max }])),
+    hdUsed: rules === "2024" ? 0 : Math.max(0, used - Math.max(1, Math.floor(hitDiceMax(e) / 2))),
+  };
+}
+
+/** Ouvre l'écran joueurs, ou ramène au premier plan celui déjà ouvert (sans le recharger) */
+export function openPlayerScreen() {
+  const w = window.open("", "tdm-joueurs");
+  if (!w) return;
+  try {
+    if (!w.location.search.includes("joueurs")) w.location.href = `${location.pathname}?joueurs`;
+  } catch {
+    w.location.href = `${location.pathname}?joueurs`;
+  }
+  w.focus();
 }
 
 export function newSession(n = 1) {
@@ -158,6 +209,15 @@ export function conePoints(tp) {
   return [[tp.x, tp.y], at(len, len / 2), at(len, -len / 2)];
 }
 
+/** Le pion est-il touché ? Règle 5e : il suffit qu'une partie de son espace soit dans la zone.
+    ponytail: on teste le centre, les coins et les milieux des bords de l'espace, pas toute la surface. */
+export function tokenInTemplate(tp, t, c) {
+  const p = tokenCell(t, c);
+  const h = ((t.size || 1) / 2) * 0.95;
+  const offsets = [[0, 0], [h, h], [h, -h], [-h, h], [-h, -h], [h, 0], [-h, 0], [0, h], [0, -h]];
+  return offsets.some(([dx, dy]) => inTemplate(tp, { x: p.x + dx, y: p.y + dy }));
+}
+
 /** Le pion est-il dans une zone révélée du brouillard ? */
 export function inRevealed(t, c) {
   if (!c.fog?.on) return true;
@@ -186,8 +246,11 @@ export function parseAttack(line) {
 /** Coup critique : on double les dés, pas le bonus */
 export const critFormula = (f) => f.replace(/(\d*)d(\d+)/gi, (_, n, s) => `${2 * (Number(n) || 1)}d${s}`);
 
+/** DD du JS de concentration : 10 ou la moitié des dégâts ; plafonné à 30 en 2024 */
+export const concentrationDc = (dmg, rules = "2024") => Math.min(rules === "2014" ? Infinity : 30, Math.max(10, Math.floor(dmg / 2)));
+
 /** Dégâts + conséquences : concentration perdue à 0 PV, sinon DD du JS de concentration */
-export function takeDamage(e, dmg) {
+export function takeDamage(e, dmg, rules = "2024") {
   const patch = applyHp(e, -dmg);
   const notes = [];
   if (dmg > 0 && e.conditions.includes("concentration")) {
@@ -195,7 +258,7 @@ export function takeDamage(e, dmg) {
       patch.conditions = e.conditions.filter((c) => c !== "concentration");
       notes.push(`${e.name} tombe et perd sa concentration`);
     } else {
-      notes.push(`${e.name} : JS de Constitution DD ${Math.max(10, Math.floor(dmg / 2))} pour garder sa concentration`);
+      notes.push(`${e.name} : JS de Constitution DD ${concentrationDc(dmg, rules)} pour garder sa concentration`);
     }
   }
   return { patch, notes };
@@ -335,6 +398,8 @@ export function normalizeCampaign(data) {
     const tokens = arr(c.tokens).filter((t) => byId[t?.entityId]).map((t) => {
       const e = byId[t.entityId];
       const tok = { id: uid(), x: 50, y: 50, size: 1, init: null, hidden: false, ...t };
+      // Anciennes tailles (en pixels relatifs) → tailles en cases du menu actuel
+      tok.size = { 1.15: 1, 1.35: 2, 1.8: 3 }[tok.size] ?? tok.size;
       // Anciens pions de monstre : leurs PV vivaient sur la fiche
       if (!isShared(e) && !tok.stats) {
         tok.stats = { name: e.name, hp: e.hp, tempHp: e.tempHp, conditions: e.conditions, customConditions: e.customConditions, exhaustion: e.exhaustion };
@@ -356,7 +421,9 @@ export function normalizeCampaign(data) {
   const world = arr(data.world)
     .filter((w) => WORLD_TYPES[w?.type])
     .map((w) => ({ ...newWorldItem(w.type), ...w, objectives: arr(w.objectives) }));
-  return { entities, combats, sessions, world };
+  // Règles 2024 par défaut ; 2014 seulement si la campagne l'a choisi
+  const settings = { rules: obj(data.settings).rules === "2014" ? "2014" : "2024" };
+  return { entities, combats, sessions, world, settings };
 }
 
 /** Redimensionne une image en data-URL JPEG et renvoie aussi son ratio hauteur / largeur */

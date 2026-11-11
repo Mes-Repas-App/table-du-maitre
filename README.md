@@ -28,13 +28,14 @@ Le résultat se trouve dans `dist/`.
 - Bonus de maîtrise calculé (niveau ou FP), jets de sauvegarde et 18 compétences (clic : maîtrise, puis expertise), perception passive.
 - Ressources limitées (emplacements de sorts, Ki, Rage…) récupérées au repos court ou long.
 - Image personnalisée par clic sur le portrait (redimensionnée et compressée automatiquement).
-- 19 états issus des règles 5e (charmé, paralysé, empoisonné…) + épuisement à 6 niveaux + états personnalisés. **La règle complète s'affiche au survol (ou au toucher / focus clavier) de chaque état.**
-- Dégâts / soins rapides, PV temporaires (absorbés en premier, non cumulables), rappel du JS de concentration, jets contre la mort à 0 PV, repos court / long, purge des états, duplication d'entité.
+- 19 états (charmé, paralysé, empoisonné…) + épuisement à 6 niveaux + états personnalisés. **La règle complète, dans l'édition choisie, s'affiche au survol (ou au toucher / focus clavier) de chaque état.**
+- Dégâts / soins rapides, PV temporaires (absorbés en premier, non cumulables), rappel du JS de concentration (DD plafonné à 30 en 2024), jets contre la mort à 0 PV, purge des états, duplication d'entité.
+- **Dés de vie** (déduits de la classe ou choisis) à dépenser pendant un repos court ; repos long : PV, ressources, emplacements de sorts et dés de vie (tous en 2024, la moitié en 2014).
 - Recherche (sans tenir compte des accents) et tri des listes.
 - Onglet **Sorts** : caractéristique d'incantation (DD et bonus d'attaque calculés), emplacements par niveau, liste de sorts. « Lancer » consomme le plus petit emplacement disponible (ou un niveau supérieur au choix) et active la concentration si besoin.
 - Onglet **Inventaire** : bourse (pc, pa, pe, po, pp) avec total en or, objets avec quantité, objets magiques et harmonisation limitée à 3.
 - Onglet **Profil & relations** : XP, langues, sens, résistances, immunités, vulnérabilités ; relations avec les autres fiches (allié, rival, famille…) et ce que les autres en pensent. Inspiration (étoile) dans l'en-tête de la fiche des PJ.
-- **Bestiaire SRD** (onglet Monstres) : recherche des monstres du SRD 5.1 en ligne (noms anglais, via Open5e) ou import d'un fichier JSON ; la fiche est remplie automatiquement, attaques comprises.
+- **Bestiaire SRD** (onglet Monstres) : recherche en ligne des monstres du SRD 5.2 (règles 2024) ou 5.1 (règles 2014) selon la campagne (noms anglais, via Open5e), ou import d'un fichier JSON ; la fiche est remplie automatiquement, attaques comprises.
 
 ### Sessions et monde
 - **Sessions** : date, résumé, PJ présents, XP à partager (distribués en un clic), trésor. Le résumé de la session précédente s'affiche en « Précédemment… ».
@@ -56,6 +57,7 @@ Le résultat se trouve dans `dist/`.
 
 ### Campagnes et sauvegarde
 - Plusieurs campagnes séparées : le menu à côté du titre permet d'en créer, d'en changer, de les renommer ou de les supprimer.
+- **Règles 2024 par défaut** (Manuel des joueurs 2024) ; une campagne peut passer aux règles 2014 depuis ce même menu. Cela change les textes des états, l'épuisement, le JS de concentration, les dés de vie au repos long et le bestiaire.
 - **Annuler** (bouton ↶ ou Ctrl+Z) : revient sur les 50 dernières modifications ; les gestes rapprochés (glisser un pion, taper un nom) comptent pour une seule étape.
 - Sauvegarde automatique dans le navigateur (IndexedDB : plusieurs centaines de Mo, cartes et portraits compris). Une ancienne sauvegarde est reprise automatiquement. En cas d'échec, un bandeau rouge propose d'exporter.
 - Export / import en fichier JSON (boutons dans l'en-tête) pour changer de machine ou faire des sauvegardes. Un fichier importé devient une **nouvelle campagne** (rien n'est écrasé) ; les anciens fichiers sont acceptés.

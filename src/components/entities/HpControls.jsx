@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Skull, Brain, Dices } from "lucide-react";
-import { applyHp, takeDamage, d } from "../../utils/helpers.js";
+import { applyHp, takeDamage, concentrationDc, d } from "../../utils/helpers.js";
+import { useRules } from "../../hooks/useRules.js";
 import { inputStyle, NumInput } from "../ui/form.jsx";
 import Tip from "../ui/Tip.jsx";
 import HpBar from "../ui/HpBar.jsx";
@@ -14,15 +15,16 @@ import HpBar from "../ui/HpBar.jsx";
 export default function HpControls({ e, update, onLog }) {
   const [amount, setAmount] = useState(5);
   const [concDc, setConcDc] = useState(null);
+  const rules = useRules();
   const ds = e.deathSaves || { ok: 0, ko: 0 };
   const concentrating = e.conditions.includes("concentration");
 
   const apply = (delta, label) => {
-    const { patch, notes } = delta < 0 ? takeDamage(e, -delta) : { patch: applyHp(e, delta), notes: [] };
+    const { patch, notes } = delta < 0 ? takeDamage(e, -delta, rules) : { patch: applyHp(e, delta), notes: [] };
     update(patch);
     onLog?.(`${e.name} : ${label || (delta < 0 ? `${delta} PV` : `+${delta} PV`)} → ${patch.hp}/${e.hpMax}`);
     notes.forEach((n) => onLog?.(n));
-    setConcDc(delta < 0 && concentrating && patch.hp > 0 ? Math.max(10, Math.floor(-delta / 2)) : null);
+    setConcDc(delta < 0 && concentrating && patch.hp > 0 ? concentrationDc(-delta, rules) : null);
   };
 
   const rollDeathSave = () => {

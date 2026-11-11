@@ -3,10 +3,10 @@ import { X, Plus, Trash2, Dices, Play, ChevronLeft, Map as MapIcon, ScrollText, 
 import { KINDS } from "../../data/reference.js";
 import {
   uid,
-  tokenCell,
   cellDistance,
-  inTemplate,
+  tokenInTemplate,
   inRevealed,
+  openPlayerScreen,
   clamp,
   resizeImage,
   sortOrder,
@@ -187,12 +187,13 @@ export default function CombatView({ combat, setCombat, entities, updateEntity, 
     };
   }, []);
 
-  const targetsOf = (tp) => pieces.filter(({ t }) => inTemplate(tp, tokenCell(t, combat))).map(({ t }) => t.id);
+  const targetsOf = (tp) => pieces.filter(({ t }) => tokenInTemplate(tp, t, combat)).map(({ t }) => t.id);
 
   /* Raccourcis : N = tour suivant, Échap = fermer le panneau */
   useEffect(() => {
     const onKey = (ev) => {
       if (ev.target.matches?.("input, textarea, select") || ev.ctrlKey || ev.metaKey || ev.altKey) return;
+      if (document.querySelector('[role="dialog"]')) return; // fiche ou fenêtre ouverte par-dessus
       if (ev.key === "Escape") setSelected(null);
       if (ev.key === "n" || ev.key === "N") turn();
     };
@@ -258,7 +259,7 @@ export default function CombatView({ combat, setCombat, entities, updateEntity, 
           </span>
         )}
         <button
-          onClick={() => window.open("?joueurs", "tdm-joueurs")}
+          onClick={openPlayerScreen}
           className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-semibold"
           style={inputStyle}
           title="Ouvre la carte pour les joueurs dans une autre fenêtre (à placer sur un second écran)"
@@ -674,6 +675,7 @@ function SelectedPanel({ t, f, update, setToken, log, openEditor, close, remove 
           />
           <span style={{ color: "var(--muted)" }}>Taille</span>
           <select value={t.size || 1} onChange={(ev) => setToken({ size: Number(ev.target.value) })} className="rounded-md px-1.5 py-1 outline-none" style={inputStyle}>
+            {![0.75, 1, 2, 3, 4].includes(t.size || 1) && <option value={t.size}>Autre ({t.size})</option>}
             <option value={0.75}>P</option>
             <option value={1}>M</option>
             <option value={2}>G</option>

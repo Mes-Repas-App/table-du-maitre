@@ -1,7 +1,8 @@
 import { useRef, useEffect, useState } from "react";
 import { X, Trash2, Copy, Upload, Zap, Moon, Sun, Coffee, Eye, Star, MonitorPlay } from "lucide-react";
-import { ABILITIES, KINDS, SKILLS } from "../../data/reference.js";
-import { mod, fmtMod, clamp, resizeImage, profBonus } from "../../utils/helpers.js";
+import { ABILITIES, KINDS, SKILLS, HIT_DICE } from "../../data/reference.js";
+import { mod, fmtMod, clamp, resizeImage, profBonus, hitDieOf, hitDiceMax, spendHitDie, shortRest, longRest } from "../../utils/helpers.js";
+import { useRules } from "../../hooks/useRules.js";
 import { Field, NumInput, inputCls, inputStyle } from "../ui/form.jsx";
 import Tip from "../ui/Tip.jsx";
 import Portrait from "../ui/Portrait.jsx";
@@ -29,7 +30,9 @@ export default function EntityEditor({ e, update, onClose, onDelete, onDuplicate
   const initiative = e.initBonus ?? mod(e.abilities.dex);
   const pb = profBonus(e);
   const skillVal = (id, ab) => mod(e.abilities[ab]) + pb * (e.skills?.[id] || 0);
-  const restore = (kinds) => (e.resources || []).map((r) => (kinds.includes(r.reset) ? { ...r, cur: r.max } : r));
+  const rules = useRules();
+  const [hdRoll, setHdRoll] = useState(null);
+  const hdLeft = Math.max(0, hitDiceMax(e) - (e.hdUsed || 0));
 
   /* Échap ferme la fiche (en priorité sur les autres raccourcis de la page) */
   useEffect(() => {
@@ -313,28 +316,60 @@ export default function EntityEditor({ e, update, onClose, onDelete, onDuplicate
               <ConditionPicker e={e} update={update} />
             </div>
 
+            {/* Dés de vie : dépensés pendant un repos court */}
+            <div className="flex flex-wrap items-center gap-2 rounded-lg p-2 text-xs" style={{ background: "var(--well)", border: "1px solid var(--edge)" }}>
+              <span style={{ color: "var(--muted)" }}>Dés de vie</span>
+              <select
+                value={hitDieOf(e)}
+                onChange={(ev) => update({ hitDie: Number(ev.target.value) })}
+                className="rounded-md px-1 py-0.5 outline-none"
+                style={{ ...inputStyle, background: "var(--panel)" }}
+                aria-label="Type de dé de vie"
+              >
+                {HIT_DICE.map((f) => (
+                  <option key={f} value={f}>
+                    d{f}
+                  </option>
+                ))}
+              </select>
+              <b style={{ color: hdLeft ? "var(--parchment)" : "var(--blood-l)" }}>
+                {hdLeft}/{hitDiceMax(e)}
+              </b>
+              <button
+                disabled={!hdLeft || e.hp >= e.hpMax}
+                onClick={() => {
+                  const r = spendHitDie(e);
+                  update(r.patch);
+                  setHdRoll(`d${hitDieOf(e)} : ${r.roll} ${fmtMod(mod(e.abilities.con))} → +${r.heal} PV`);
+                }}
+                className="ml-auto rounded-md px-2 py-1 font-semibold disabled:opacity-40"
+                style={{ background: "var(--life)", color: "#0d130b" }}
+                title={e.hp >= e.hpMax ? "PV déjà au maximum" : "Dépenser un dé de vie (repos court)"}
+              >
+                Dépenser 1
+              </button>
+              {hdRoll && <span className="w-full text-right" style={{ color: "var(--life-l)" }}>{hdRoll}</span>}
+            </div>
+
             <div className="flex gap-2 pt-1">
-              <Tip text="Repos court : récupère les ressources marquées « repos court »." wide>
+              <Tip text="Repos court : récupère les ressources marquées « repos court ». Dépensez des dés de vie ci-dessus pour regagner des PV." wide>
                 <button
-                  onClick={() => update({ resources: restore(["short"]) })}
+                  onClick={() => update(shortRest(e))}
                   className="flex-1 rounded-md px-2 py-1.5 text-xs font-semibold inline-flex items-center justify-center gap-1.5"
                   style={inputStyle}
                 >
                   <Coffee size={13} /> Repos court
                 </button>
               </Tip>
-              <Tip text="Repos long : PV au maximum, PV temporaires perdus, -1 niveau d'épuisement, ressources et emplacements de sorts récupérés." wide>
+              <Tip
+                text={`Repos long : PV au maximum, PV temporaires perdus, -1 niveau d'épuisement, ressources et emplacements de sorts récupérés, ${rules === "2024" ? "tous les dés de vie" : "la moitié des dés de vie"} (règles ${rules}).`}
+                wide
+              >
                 <button
-                  onClick={() =>
-                    update({
-                      hp: e.hpMax,
-                      tempHp: 0,
-                      exhaustion: Math.max(0, (e.exhaustion || 0) - 1),
-                      deathSaves: { ok: 0, ko: 0 },
-                      resources: restore(["short", "long"]),
-                      slots: Object.fromEntries(Object.entries(e.slots || {}).map(([l, s]) => [l, { ...s, cur: s.max }])),
-                    })
-                  }
+                  onClick={() => {
+                    update(longRest(e, rules));
+                    setHdRoll(null);
+                  }}
                   className="flex-1 rounded-md px-2 py-1.5 text-xs font-semibold inline-flex items-center justify-center gap-1.5"
                   style={inputStyle}
                 >

@@ -1,13 +1,16 @@
 import { useState, useEffect, useRef } from "react";
 import { X, Search, BookOpen, Check, Upload } from "lucide-react";
-import { SRD_SEARCH, SRD_CREDIT, fromOpen5e } from "../../data/srd.js";
+import { SRD, srdSummary, fromOpen5e, fromOpen5eV2 } from "../../data/srd.js";
+import { useRules } from "../../hooks/useRules.js";
 import { inputStyle } from "../ui/form.jsx";
 
 /**
- * Recherche de monstres du SRD 5.1 (API Open5e, nécessite une connexion)
- * ou import d'un fichier JSON de créatures au même format.
+ * Recherche de monstres du SRD (5.2 pour les règles 2024, 5.1 pour 2014) via l'API Open5e
+ * (nécessite une connexion), ou import d'un fichier JSON de créatures Open5e.
  */
 export default function Bestiary({ onAdd, onClose }) {
+  const rules = useRules();
+  const src = SRD[rules] || SRD[2024];
   const [query, setQuery] = useState("");
   const [results, setResults] = useState(null);
   const [state, setState] = useState("idle"); // idle | loading | error
@@ -29,7 +32,7 @@ export default function Bestiary({ onAdd, onClose }) {
     if (!query.trim()) return;
     setState("loading");
     try {
-      const res = await fetch(SRD_SEARCH + encodeURIComponent(query.trim()));
+      const res = await fetch(src.search(query.trim()));
       if (!res.ok) throw new Error(res.status);
       setResults((await res.json()).results || []);
       setState("idle");
@@ -39,8 +42,8 @@ export default function Bestiary({ onAdd, onClose }) {
   };
 
   const add = (m) => {
-    onAdd(fromOpen5e(m));
-    setAdded((p) => [...p, m.slug || m.name]);
+    onAdd(src.convert(m));
+    setAdded((p) => [...p, srdSummary(m).key]);
   };
 
   return (
@@ -49,7 +52,7 @@ export default function Bestiary({ onAdd, onClose }) {
         <div className="flex items-center gap-2 p-3" style={{ borderBottom: "1px solid var(--edge)" }}>
           <BookOpen size={16} style={{ color: "var(--gold)" }} />
           <span className="flex-1" style={{ fontFamily: "var(--display)", color: "var(--parchment)" }}>
-            Bestiaire SRD
+            Bestiaire SRD {rules === "2014" ? "5.1 (règles 2014)" : "5.2 (règles 2024)"}
           </span>
           <button onClick={onClose} className="p-1.5 rounded-md" style={inputStyle} title="Fermer (Échap)">
             <X size={14} />
@@ -78,15 +81,16 @@ export default function Bestiary({ onAdd, onClose }) {
           {results?.length > 0 && (
             <div className="max-h-80 overflow-y-auto space-y-1">
               {results.map((m) => {
-                const done = added.includes(m.slug || m.name);
+                const sum = srdSummary(m);
+                const done = added.includes(sum.key);
                 return (
-                  <div key={m.slug || m.name} className="flex items-center gap-2 rounded-md px-2 py-1.5" style={{ background: "var(--well)", border: "1px solid var(--edge)" }}>
+                  <div key={sum.key} className="flex items-center gap-2 rounded-md px-2 py-1.5" style={{ background: "var(--well)", border: "1px solid var(--edge)" }}>
                     <div className="flex-1 min-w-0">
                       <div className="truncate" style={{ color: "var(--parchment)" }}>
                         {m.name}
                       </div>
                       <div className="text-[11px] truncate" style={{ color: "var(--muted)" }}>
-                        FP {m.challenge_rating} · {m.size} {m.type} · CA {m.armor_class} · {m.hit_points} PV
+                        {sum.line}
                       </div>
                     </div>
                     <button
@@ -120,14 +124,15 @@ export default function Bestiary({ onAdd, onClose }) {
                   const data = JSON.parse(await f.text());
                   const list = Array.isArray(data) ? data : data.results || [data];
                   const valid = list.filter((m) => m && typeof m.name === "string");
-                  valid.forEach((m) => onAdd(fromOpen5e(m)));
+                  // Format v2 (SRD 5.2) reconnu à ses caractéristiques groupées
+                  valid.forEach((m) => onAdd(m.ability_scores ? fromOpen5eV2(m) : fromOpen5e(m)));
                   alert(`${valid.length} monstre${valid.length > 1 ? "s" : ""} importé${valid.length > 1 ? "s" : ""}.`);
                 } catch {
                   alert("Fichier JSON invalide (format attendu : créatures Open5e).");
                 }
               }}
             />
-            <span className="flex-1">{SRD_CREDIT}</span>
+            <span className="flex-1">{src.credit}</span>
           </div>
         </div>
       </div>
