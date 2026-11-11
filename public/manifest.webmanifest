@@ -1,0 +1,11 @@
+{
+  "name": "Table du Maître · D&D 5e",
+  "short_name": "Table du Maître",
+  "description": "Suivi de campagne D&D 5e : personnages, PNJ, monstres et combats",
+  "lang": "fr",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#14110c",
+  "theme_color": "#14110c",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}

@@ -1,0 +1,63 @@
+@import url("https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=Alegreya+Sans:ital,wght@0,400;0,500;0,700;1,400&display=swap");
+@import "tailwindcss";
+
+:root {
+  --bg: #14110c;
+  --panel: #1e1a13;
+  --well: #14110c;
+  --edge: #3a3325;
+  --edge2: #57503e;
+  --chip: #2a251b;
+  --tip-bg: #2b2317;
+  --parchment: #e8dcc3;
+  --muted: #9a8f76;
+  --gold: #c9a227;
+  --blood: #a3352c;
+  --blood-l: #d9695f;
+  --life: #5b8c51;
+  --life-l: #8fbf85;
+  --arcane: #8b9dd4;
+  --display: "Cinzel", Georgia, serif;
+  --body: "Alegreya Sans", system-ui, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--parchment);
+  font-family: var(--body);
+}
+
+input[type="number"]::-webkit-inner-spin-button {
+  opacity: 0.4;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--edge);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+input:focus,
+textarea:focus,
+select:focus {
+  box-shadow: 0 0 0 2px rgba(201, 162, 39, 0.35);
+  outline: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+    animation: none !important;
+  }
+}
