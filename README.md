@@ -48,6 +48,8 @@ Le résultat se trouve dans `dist/`.
 - Plusieurs pions d'un même monstre ou PNJ (« Gobelin 2 », « Gobelin 3 »…) : **chaque pion a ses propres PV et états**, la fiche sert de modèle. Les PJ, eux, partagent PV et états avec leur fiche.
 - Clic sur un pion → panneau contextuel : dégâts / soins en un clic, états, ressources, initiative, taille, « caché aux joueurs », accès à la fiche.
 - Tracker d'initiative : lancement automatique pour les monstres et PNJ (les PJ gardent l'initiative saisie), égalités départagées par la DEX, tours et rounds. Touche **N** = tour suivant, **Échap** = fermer.
+- **Effets à durée limitée** (Bénédiction 10 rounds, Hâte…) : décomptés au début du tour du combattant choisi (par défaut celui qui joue, souvent le lanceur) ; à 0, l'effet disparaît et l'état associé (ex. « Ralenti ») est retiré.
+- **Difficulté de la rencontre** (Guide du maître 2024) : XP des adversaires comparés au budget du groupe (faible, modérée, élevée), mise à jour pendant que vous ajoutez des monstres.
 - **Attaques cliquables** : une ligne « Épée longue : +5, 1d8+3 » donne un bouton de jet d'attaque et un de dégâts ; un 20 naturel double les dés des dégâts suivants.
 - **Outils de carte** : règle de mesure (en cases et en mètres), gabarits sphère et cône à la taille voulue, avec le nombre de pions touchés.
 - **Dégâts de zone** : un jet de dégâts, un JS par cible (moitié si réussi), multiplicateur ajustable (résistance, vulnérabilité) ; lancé depuis un gabarit, les cibles sont déjà cochées.
@@ -61,11 +63,38 @@ Le résultat se trouve dans `dist/`.
 - **Annuler** (bouton ↶ ou Ctrl+Z) : revient sur les 50 dernières modifications ; les gestes rapprochés (glisser un pion, taper un nom) comptent pour une seule étape.
 - Sauvegarde automatique dans le navigateur (IndexedDB : plusieurs centaines de Mo, cartes et portraits compris). Une ancienne sauvegarde est reprise automatiquement. En cas d'échec, un bandeau rouge propose d'exporter.
 - Export / import en fichier JSON (boutons dans l'en-tête) pour changer de machine ou faire des sauvegardes. Un fichier importé devient une **nouvelle campagne** (rien n'est écrasé) ; les anciens fichiers sont acceptés.
-- **Copies de secours automatiques** : au plus une par heure, les 10 dernières gardées par campagne (menu de campagne → « Copies de secours… »). Un bandeau rappelle d'exporter si le dernier export date de plus d'une semaine.
+- **Copies de secours automatiques** : au plus une par heure, les 10 dernières gardées par campagne (menu de campagne → « Copies de secours… »), plus une juste avant qu'une version venue d'un autre appareil ne remplace la vôtre. Un bandeau rappelle d'exporter si le dernier export date de plus d'une semaine (sauf si la synchro Google est active).
+- **Synchronisation Google Drive** (icône nuage dans l'en-tête) : les mêmes campagnes sur l'ordinateur, la tablette et le téléphone. Voir ci-dessous pour l'activer.
 
 ### Hors ligne
-- Une fois la version construite (`npm run build`) ouverte une première fois avec une connexion, l'appli et ses polices fonctionnent sans Internet. Elle peut aussi être installée comme une application (menu du navigateur → « Installer »).
-- La mise à jour se fait en arrière-plan : une nouvelle version s'affiche au chargement suivant. En développement (`npm run dev`), le mode hors ligne est désactivé.
+- Une fois l'appli ouverte une première fois avec une connexion, elle et ses polices fonctionnent sans Internet. Elle peut aussi être installée comme une application (menu du navigateur → « Installer » ou « Ajouter à l'écran d'accueil »).
+- Connecté, la page est toujours chargée à jour. En développement (`npm run dev`), le mode hors ligne est désactivé.
+
+## Synchronisation entre appareils (Google Drive)
+
+Les campagnes sont rangées dans le **dossier d'application caché** de votre Google Drive : invisibles dans « Mon Drive », lisibles uniquement par cette appli, et comptées dans votre espace Google.
+
+**Fonctionnement** : synchronisation à l'ouverture, 20 secondes après chaque modification, au retour sur l'onglet et toutes les 2 minutes. En cas de modifications des deux côtés, **la version la plus récente gagne** ; l'autre est gardée dans les copies de secours de l'appareil. Une campagne supprimée sur un appareil l'est partout. La connexion Google dure environ une heure : ensuite, un clic sur « Reconnecter » (icône nuage) suffit, sans ressaisir de mot de passe.
+
+### Activation (une seule fois, environ 10 minutes)
+
+Il faut un **identifiant client Google** (ce n'est pas un secret : il identifie l'appli, pas votre compte).
+
+1. Ouvrez [console.cloud.google.com](https://console.cloud.google.com) avec votre compte Google et créez un projet (ex. « Table du Maître »).
+2. **API et services → Bibliothèque** : cherchez **Google Drive API** et cliquez sur **Activer**.
+3. **Google Auth Platform** (ou « Écran de consentement OAuth ») : type d'utilisateur **Externe**, nom de l'appli, votre adresse en contact. Dans **Audience**, laissez le statut **En test** et ajoutez votre adresse Gmail (et celles des personnes qui utiliseront l'appli) comme **utilisateurs test**.
+4. **Clients → Créer un client** : type **Application Web**. Dans **Origines JavaScript autorisées**, ajoutez :
+   - `https://mes-repas-app.github.io`
+   - `http://localhost:5173` (pour le développement)
+   
+   Créez, puis copiez l'**ID client** (il finit par `.apps.googleusercontent.com`).
+5. Sur GitHub, dans le dépôt : **Settings → Secrets and variables → Actions → onglet Variables → New repository variable**, nom `GOOGLE_CLIENT_ID`, valeur = l'ID client.
+6. Toujours sur GitHub : **Actions → Déploiement → Run workflow** pour reconstruire le site avec l'identifiant (ou attendez le prochain envoi de code).
+7. Sur chaque appareil : ouvrez le site, cliquez sur l'**icône nuage** → **Se connecter à Google**. Commencez par l'appareil qui contient vos campagnes actuelles, pour qu'elles partent les premières.
+
+Google affiche un avertissement « Google n'a pas validé cette application » tant que l'appli est en test : c'est normal pour une appli personnelle, cliquez sur **Continuer**.
+
+En développement local, mettez l'identifiant dans un fichier `.env.local` (non versionné) : `VITE_GOOGLE_CLIENT_ID=…apps.googleusercontent.com`.
 
 ## Tests
 
@@ -73,7 +102,7 @@ Le résultat se trouve dans `dist/`.
 npm test
 ```
 
-Vérifie les règles centrales (PV, tours d'initiative, formules de dés, import des anciens formats).
+Vérifie les règles centrales (PV, tours d'initiative, formules de dés, effets à durée, difficulté des rencontres, import des anciens formats) et la synchronisation entre deux appareils simulés.
 
 ## Structure du projet
 

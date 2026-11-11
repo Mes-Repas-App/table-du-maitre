@@ -4,7 +4,95 @@ import assert from "node:assert/strict";
 import { applyHp, nextTurn, removeToken, rollInitiatives, rollFormula, normalizeCampaign, profBonus, newEntity, newToken } from "./helpers.js";
 import { parseAttack, critFormula, takeDamage, inTemplate, inRevealed, saveMod } from "./helpers.js";
 import { fromOpen5e } from "../data/srd.js";
-import { spendHitDie, longRest, hitDieOf, tokenInTemplate } from "./helpers.js";
+import { spendHitDie, longRest, hitDieOf, tokenInTemplate, tickEffects, encounterDifficulty, crXp } from "./helpers.js";
+import { syncCampaigns } from "../sync/syncCampaigns.js";
+
+test("Effets à durée : décompte au tour du lanceur, expiration", () => {
+  let c = { activeId: "A", effects: [{ id: "e1", tokenId: "B", ownerId: "A", rounds: 2 }, { id: "e2", tokenId: "A", ownerId: "C", rounds: 1 }] };
+  let r = tickEffects(c);
+  assert.deepEqual([r.combat.effects.map((e) => e.rounds), r.expired], [[1, 1], []]); // seul e1 (décompté par A) bouge
+  r = tickEffects(r.combat);
+  assert.deepEqual(r.expired.map((e) => e.id), ["e1"]);
+  assert.deepEqual(r.combat.effects.map((e) => e.id), ["e2"]);
+});
+
+test("Rencontres : XP par FP et difficulté 2024", () => {
+  assert.deepEqual([crXp("1/4"), crXp("FP 5"), crXp("")], [50, 1800, 0]);
+  const party = [5, 5, 5, 5]; // budget : 2000 / 3000 / 4400
+  assert.deepEqual(encounterDifficulty(party, 1800).budget, [2000, 3000, 4400]);
+  assert.deepEqual([1800, 2000, 3500, 4400, 6000].map((xp) => encounterDifficulty(party, xp).level), [-1, 0, 1, 2, 3]);
+});
+
+/** Faux Google Drive en mémoire */
+function fakeDrive() {
+  const files = new Map();
+  let n = 0;
+  return {
+    files,
+    list: async () => [...files.entries()].map(([id, f]) => ({ id, appProperties: f.meta.appProperties })),
+    download: async (id) => structuredClone(files.get(id).content),
+    upload: async (id, meta, content) => {
+      const key = id || `f${++n}`;
+      files.set(key, { meta, content: structuredClone(content) });
+      return key;
+    },
+    remove: async (id) => files.delete(id),
+  };
+}
+
+/** Faux appareil : ses campagnes locales et les fonctions attendues par syncCampaigns */
+function device(campaigns) {
+  const d = { campaigns, deleted: [] };
+  d.sync = (drive) =>
+    syncCampaigns({
+      drive,
+      local: { list: d.campaigns.map(({ id, name, updatedAt }) => ({ id, name, updatedAt })), deleted: d.deleted },
+      read: async (id) => d.campaigns.find((c) => c.id === id)?.data,
+      apply: async (id, name, data, updatedAt) => {
+        d.campaigns = [...d.campaigns.filter((c) => c.id !== id), { id, name, data, updatedAt }];
+      },
+      remove: async (id) => {
+        d.campaigns = d.campaigns.filter((c) => c.id !== id);
+      },
+    });
+  return d;
+}
+
+test("Synchro : l'ordinateur envoie, le téléphone récupère sans écraser avec sa campagne vide", async () => {
+  const drive = fakeDrive();
+  const pc = device([{ id: "courante", name: "Ma campagne", updatedAt: 100, data: { entities: ["Aria"] } }]);
+  const phone = device([{ id: "courante", name: "Ma campagne", updatedAt: 0, data: { entities: [] } }]); // jamais modifiée
+  assert.deepEqual((await pc.sync(drive)).up, ["courante"]);
+  assert.deepEqual((await phone.sync(drive)).down, ["courante"]);
+  assert.deepEqual(phone.campaigns[0].data.entities, ["Aria"]);
+});
+
+test("Synchro : la modification la plus récente gagne, dans les deux sens", async () => {
+  const drive = fakeDrive();
+  const pc = device([{ id: "c", name: "C", updatedAt: 100, data: { v: 1 } }]);
+  const phone = device([]);
+  await pc.sync(drive);
+  await phone.sync(drive);
+  phone.campaigns[0] = { ...phone.campaigns[0], updatedAt: 200, data: { v: 2 } }; // modif sur le téléphone
+  assert.deepEqual((await phone.sync(drive)).up, ["c"]);
+  assert.deepEqual((await pc.sync(drive)).down, ["c"]);
+  assert.equal(pc.campaigns[0].data.v, 2);
+  assert.deepEqual(await pc.sync(drive), { up: [], down: [], removed: [], deleted: [] }); // rien à faire
+});
+
+test("Synchro : une campagne supprimée sur un appareil disparaît partout", async () => {
+  const drive = fakeDrive();
+  const pc = device([{ id: "a", name: "A", updatedAt: 1, data: {} }, { id: "b", name: "B", updatedAt: 1, data: {} }]);
+  const phone = device([]);
+  await pc.sync(drive);
+  await phone.sync(drive);
+  pc.campaigns = pc.campaigns.filter((c) => c.id !== "b");
+  pc.deleted = ["b"];
+  await pc.sync(drive);
+  assert.deepEqual((await phone.sync(drive)).removed, ["b"]);
+  assert.deepEqual(phone.campaigns.map((c) => c.id), ["a"]);
+  assert.ok(![...drive.files.values()].some((f) => f.meta.appProperties?.campaignId === "b"));
+});
 
 test("Dés de vie et repos long selon les règles 2014 / 2024", () => {
   const guerrier = { clazz: "Guerrier", level: 6, hp: 10, hpMax: 50, tempHp: 0, abilities: { con: 14 }, hdUsed: 5 };

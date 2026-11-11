@@ -24,12 +24,59 @@ export function hpColor(hp, hpMax) {
 
 /** Bonus de maîtrise : selon le niveau (PJ / PNJ) ou le FP (monstres, « 1/2 » accepté) */
 export function profBonus(e) {
-  let x = Number(e.level) || 1;
-  if (e.kind === "monster") {
-    const [a, b] = String(e.cr || "").replace(",", ".").replace(/[^\d./]/g, "").split("/");
-    x = b ? a / b : Number(a) || 0;
-  }
+  const x = e.kind === "monster" ? crValue(e.cr) : Number(e.level) || 1;
   return Math.max(2, Math.ceil(x / 4) + 1);
+}
+
+/** Valeur numérique d'un FP saisi librement (« FP 1/2 » → 0,5) ; null si absent */
+export function crValue(cr) {
+  const [a, b] = String(cr ?? "").replace(",", ".").replace(/[^\d./]/g, "").split("/");
+  if (a === "" || a == null) return null;
+  return b ? Number(a) / Number(b) : Number(a);
+}
+
+/* ---------- Difficulté des rencontres (Guide du maître 2024) ---------- */
+
+/** XP d'une créature selon son FP (identique en 2014 et 2024) */
+const CR_XP = {
+  0: 10, 0.125: 25, 0.25: 50, 0.5: 100, 1: 200, 2: 450, 3: 700, 4: 1100, 5: 1800, 6: 2300, 7: 2900, 8: 3900, 9: 5000, 10: 5900,
+  11: 7200, 12: 8400, 13: 10000, 14: 11500, 15: 13000, 16: 15000, 17: 18000, 18: 20000, 19: 22000, 20: 25000,
+  21: 33000, 22: 41000, 23: 50000, 24: 62000, 25: 75000, 26: 90000, 27: 105000, 28: 120000, 29: 135000, 30: 155000,
+};
+export const crXp = (cr) => CR_XP[crValue(cr)] ?? 0;
+
+/** Budget d'XP par personnage selon son niveau : [faible, modérée, élevée] */
+const XP_BUDGET = [
+  null, [50, 75, 100], [100, 150, 200], [150, 225, 400], [250, 375, 500], [500, 750, 1100],
+  [600, 1000, 1400], [750, 1300, 1700], [1000, 1700, 2100], [1300, 2000, 2600], [1600, 2300, 3100],
+  [1900, 2900, 4100], [2200, 3700, 4700], [2600, 4200, 5400], [2900, 4900, 6200], [3300, 5400, 7800],
+  [3800, 6100, 9800], [4500, 7200, 11700], [5000, 8700, 14200], [5500, 10700, 17200], [6400, 13200, 22000],
+];
+export const DIFFICULTY = ["Faible", "Modérée", "Élevée"];
+
+/** Budget du groupe et difficulté obtenue pour un total d'XP d'adversaires.
+    `level` : -1 sous « faible », 0 faible, 1 modérée, 2 élevée, 3 au-delà d'élevée. */
+export function encounterDifficulty(levels, xp) {
+  const budget = [0, 1, 2].map((i) => levels.reduce((s, l) => s + XP_BUDGET[clamp(Math.round(l) || 1, 1, 20)][i], 0));
+  let level = -1;
+  budget.forEach((b, i) => xp >= b && b > 0 && (level = i));
+  if (level === 2 && xp > budget[2] * 1.25) level = 3; // ponytail: « au-delà » = +25 % du budget élevé, repère arbitraire
+  return { budget, level };
+}
+
+/* ---------- Effets à durée limitée ---------- */
+
+/** Début du tour de c.activeId : les effets décomptés à ce tour perdent un round.
+    Renvoie le combat mis à jour et les effets qui expirent. */
+export function tickEffects(c) {
+  const effects = [];
+  const expired = [];
+  for (const ef of c.effects || []) {
+    if (ef.ownerId !== c.activeId) effects.push(ef);
+    else if (ef.rounds <= 1) expired.push(ef);
+    else effects.push({ ...ef, rounds: ef.rounds - 1 });
+  }
+  return { combat: { ...c, effects }, expired };
 }
 
 export function newEntity(kind) {
@@ -176,6 +223,7 @@ export function newCombat() {
     log: [],
     templates: [], // gabarits de sorts : { id, shape: "sphere" | "cone", x, y (en cases), angle, size (m) }
     fog: { on: false, cells: [] }, // brouillard : cases révélées « x,y »
+    effects: [], // effets temporaires : { id, tokenId, label, rounds, ownerId (tour qui décompte), conditionId }
   };
 }
 
@@ -330,7 +378,12 @@ export function nextTurn(c, byId) {
 /** Retire un pion ; si c'était son tour, la main passe au suivant */
 export function removeToken(c, id, byId) {
   const next = c.started && c.activeId === id ? nextTurn(c, byId) : c;
-  return { ...next, tokens: next.tokens.filter((t) => t.id !== id) };
+  return {
+    ...next,
+    tokens: next.tokens.filter((t) => t.id !== id),
+    // Ses effets disparaissent ; ceux qu'il décomptait se décomptent désormais au tour de leur cible
+    effects: (next.effects || []).filter((ef) => ef.tokenId !== id).map((ef) => (ef.ownerId === id ? { ...ef, ownerId: ef.tokenId } : ef)),
+  };
 }
 
 /** Lance les initiatives : monstres et PNJ toujours, PJ seulement s'ils n'en ont pas
@@ -407,7 +460,7 @@ export function normalizeCampaign(data) {
       return tok;
     });
     const fog = obj(c.fog);
-    const combat = { ...newCombat(), ...c, tokens, log: arr(c.log), templates: arr(c.templates), fog: { on: !!fog.on, cells: arr(fog.cells) } };
+    const combat = { ...newCombat(), ...c, tokens, log: arr(c.log), templates: arr(c.templates), effects: arr(c.effects).filter((ef) => tokens.some((t) => t.id === ef.tokenId)), fog: { on: !!fog.on, cells: arr(fog.cells) } };
     // Ancien format : le tour actif était une position dans la liste
     if (combat.started && !tokens.some((t) => t.id === combat.activeId)) {
       combat.activeId = sortOrder(tokens, byId)[(c.turn || 0) % tokens.length]?.id ?? null;

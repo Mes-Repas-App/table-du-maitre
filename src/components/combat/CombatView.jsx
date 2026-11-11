@@ -3,6 +3,7 @@ import { X, Plus, Trash2, Dices, Play, ChevronLeft, Map as MapIcon, ScrollText, 
 import { KINDS } from "../../data/reference.js";
 import {
   uid,
+  tickEffects,
   cellDistance,
   tokenInTemplate,
   inRevealed,
@@ -31,6 +32,9 @@ import Spells from "../entities/Spells.jsx";
 import Board from "./Board.jsx";
 import AttackList from "./AttackList.jsx";
 import AoeDialog from "./AoeDialog.jsx";
+import Effects from "./Effects.jsx";
+import Difficulty from "./Difficulty.jsx";
+import { useRules } from "../../hooks/useRules.js";
 
 const TOOLS = [
   ["move", Hand, "Déplacer les pions"],
@@ -106,7 +110,39 @@ export default function CombatView({ combat, setCombat, entities, updateEntity, 
       ? setCombat((c) => ({ ...c, tokens: c.tokens.map((x) => (x.id === t.id ? { ...x, stats: { ...x.stats, ...patch } } : x)) }))
       : updateEntity(t.entityId, patch);
 
-  const turn = useCallback(() => setCombat((c) => nextTurn(c, byId)), [setCombat, byId]);
+  const rules = useRules();
+  const effects = combat.effects || [];
+
+  /* Fin d'un effet : on retire son état, sauf si un autre effet du même pion le maintient */
+  const endEffect = (ef, remaining) => {
+    const p = pieces.find((x) => x.t.id === ef.tokenId);
+    if (!p) return;
+    log(`${ef.label} prend fin pour ${p.f.name}`);
+    const kept = remaining.some((o) => o.tokenId === ef.tokenId && o.conditionId === ef.conditionId);
+    if (ef.conditionId && !kept && p.f.conditions.includes(ef.conditionId)) {
+      updateFighter(p.t, { conditions: p.f.conditions.filter((c) => c !== ef.conditionId) });
+    }
+  };
+
+  const addEffect = (ef) => {
+    const p = pieces.find((x) => x.t.id === ef.tokenId);
+    setCombat((c) => ({ ...c, effects: [...(c.effects || []), { ...ef, id: uid() }] }));
+    if (ef.conditionId && !p.f.conditions.includes(ef.conditionId)) updateFighter(p.t, { conditions: [...p.f.conditions, ef.conditionId] });
+    log(`${p.f.name} : ${ef.label} (${ef.rounds} round${ef.rounds > 1 ? "s" : ""})`);
+  };
+
+  const removeEffect = (ef) => {
+    const remaining = effects.filter((o) => o.id !== ef.id);
+    setCombat((c) => ({ ...c, effects: (c.effects || []).filter((o) => o.id !== ef.id) }));
+    endEffect(ef, remaining);
+  };
+
+  /* Tour suivant + décompte des effets de celui qui commence son tour */
+  const turn = () => {
+    const { combat: next, expired } = tickEffects(nextTurn(combat, byId));
+    setCombat(() => next);
+    expired.forEach((ef) => endEffect(ef, next.effects));
+  };
 
   /* Position du pointeur en cases (1 case = largeur / nombre de colonnes) */
   const toCell = (ev) => {
@@ -376,8 +412,13 @@ export default function CombatView({ combat, setCombat, entities, updateEntity, 
                   </span>
                   <Portrait e={f} size={26} active={active} dead={f.hp === 0} />
                   <div className="min-w-0 flex-1">
-                    <div className="text-xs truncate" style={{ color: "var(--parchment)" }}>
-                      {f.name}
+                    <div className="flex items-center gap-1 text-xs" style={{ color: "var(--parchment)" }}>
+                      <span className="truncate">{f.name}</span>
+                      {effects.some((ef) => ef.tokenId === t.id) && (
+                        <span className="ml-auto shrink-0 text-[10px]" style={{ color: "var(--arcane)" }} title={effects.filter((ef) => ef.tokenId === t.id).map((ef) => `${ef.label} : ${ef.rounds} rd`).join("\n")}>
+                          ⏳{Math.min(...effects.filter((ef) => ef.tokenId === t.id).map((ef) => ef.rounds))}
+                        </span>
+                      )}
                     </div>
                     <HpBar e={f} small />
                   </div>
@@ -385,6 +426,7 @@ export default function CombatView({ combat, setCombat, entities, updateEntity, 
               );
             })}
           </div>
+          <Difficulty pieces={pieces} entities={entities} rules={rules} />
         </div>
 
         {/* Carte et pions */}
@@ -593,6 +635,7 @@ export default function CombatView({ combat, setCombat, entities, updateEntity, 
           f={sel.f}
           update={(p) => updateFighter(sel.t, p)}
           setToken={(p) => setToken(sel.t.id, p)}
+          effectsPanel={<Effects t={sel.t} effects={effects.filter((ef) => ef.tokenId === sel.t.id)} pieces={pieces} activeId={activeId} add={addEffect} remove={removeEffect} />}
           log={log}
           openEditor={openEditor}
           close={() => setSelected(null)}
@@ -609,7 +652,7 @@ export default function CombatView({ combat, setCombat, entities, updateEntity, 
   );
 }
 
-function SelectedPanel({ t, f, update, setToken, log, openEditor, close, remove }) {
+function SelectedPanel({ t, f, update, setToken, log, openEditor, close, remove, effectsPanel }) {
   return (
     <div
       className="fixed z-30 bottom-0 left-0 right-0 md:left-auto md:right-4 md:bottom-4 md:w-96 rounded-t-xl md:rounded-xl shadow-2xl"
@@ -654,6 +697,7 @@ function SelectedPanel({ t, f, update, setToken, log, openEditor, close, remove 
           </div>
         )}
         <HpControls e={f} update={update} onLog={log} />
+        {effectsPanel}
         <div>
           <span className="block text-[11px] uppercase tracking-widest mb-1.5" style={{ color: "var(--muted)" }}>
             États — survolez pour la règle

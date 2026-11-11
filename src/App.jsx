@@ -4,6 +4,8 @@ import { RACES, CLASSES, BACKGROUNDS } from "./data/reference.js";
 import { uid, withLog, PLAYER_CHANNEL, openPlayerScreen } from "./utils/helpers.js";
 import { useCampaign } from "./hooks/useCampaign.js";
 import { RulesContext } from "./hooks/useRules.js";
+import { useDriveSync } from "./hooks/useDriveSync.js";
+import SyncButton from "./components/campaign/SyncButton.jsx";
 import TextDialog from "./components/ui/TextDialog.jsx";
 import Roster from "./components/entities/Roster.jsx";
 import EntityEditor from "./components/entities/EntityEditor.jsx";
@@ -65,7 +67,10 @@ export default function App() {
     deleteCampaign,
     listBackups,
     restoreBackup,
+    syncBridge,
+    changeStamp,
   } = useCampaign();
+  const drive = useDriveSync(syncBridge, { loaded, changeStamp });
   const [tab, setTab] = useState("pc");
   const [editingId, setEditingId] = useState(null);
   const [openCombatId, setOpenCombatId] = useState(null);
@@ -207,7 +212,15 @@ export default function App() {
             </button>
           </div>
         )}
-        {saveState !== "error" && exportDue && (
+        {drive.configured && drive.connected && !drive.valid && drive.pending && (
+          <div className="flex flex-wrap items-center justify-center gap-2 px-3 py-1.5 text-xs" style={{ background: "var(--chip)", color: "var(--parchment)", borderBottom: "1px solid var(--edge)" }} role="status">
+            Session Google expirée : vos dernières modifications ne sont pas encore sur vos autres appareils.
+            <button onClick={drive.connect} className="underline font-semibold" style={{ color: "var(--gold)" }}>
+              Reconnecter
+            </button>
+          </div>
+        )}
+        {saveState !== "error" && exportDue && !drive.valid && (
           <div className="flex flex-wrap items-center justify-center gap-2 px-3 py-1.5 text-xs" style={{ background: "var(--chip)", color: "var(--parchment)", borderBottom: "1px solid var(--edge)" }} role="status">
             <Download size={13} style={{ color: "var(--gold)" }} /> Dernier export de « {current?.name} » il y a {days} jours : gardez une copie hors du navigateur.
             <button onClick={exportCampaign} className="underline font-semibold" style={{ color: "var(--gold)" }}>
@@ -259,6 +272,7 @@ export default function App() {
               <span className="text-[10px] hidden lg:block" style={{ color: "var(--muted)" }}>
                 {saveState === "saving" ? "Sauvegarde…" : saveState === "saved" ? "Campagne sauvegardée" : ""}
               </span>
+              <SyncButton sync={drive} />
               <button onClick={undo} disabled={!canUndo} className="p-1.5 rounded-md disabled:opacity-35" style={inputStyle} title="Annuler la dernière modification (Ctrl+Z)">
                 <Undo2 size={14} />
               </button>

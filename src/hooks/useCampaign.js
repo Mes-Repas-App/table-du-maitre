@@ -3,7 +3,7 @@ import { normalizeCampaign, uid } from "../utils/helpers.js";
 
 const DB_NAME = "table-du-maitre";
 const STORE = "campagne";
-const INDEX_KEY = "__index"; // { current, list: [{ id, name }] }
+const INDEX_KEY = "__index"; // { current, list: [{ id, name, updatedAt }], deleted: [ids] }
 const FIRST_ID = "courante"; // clé de l'ancienne campagne unique
 const LEGACY_KEY = "table-du-maitre:campagne"; // ancienne sauvegarde localStorage (limitée à ~5 Mo)
 const HISTORY_MAX = 50;
@@ -64,16 +64,25 @@ const writeExport = (id, t) => {
  */
 export function useCampaign() {
   const [camp, setCamp] = useState(EMPTY);
-  const [campaigns, setCampaigns] = useState([]); // [{ id, name }]
+  const [campaigns, setCampaigns] = useState([]); // [{ id, name, updatedAt (dernière vraie modification) }]
   const [currentId, setCurrentId] = useState(null);
+  const [deleted, setDeleted] = useState([]); // campagnes supprimées, à supprimer aussi sur les autres appareils
   const [loaded, setLoaded] = useState(false);
   const [loadError, setLoadError] = useState(null);
   const [saveState, setSaveState] = useState("idle"); // idle | saving | saved | error
   const [canUndo, setCanUndo] = useState(false);
   const [lastExport, setLastExport] = useState(null);
   const pending = useRef(null); // { key, data } en attente d'écriture
+  const currentRef = useRef(null);
+  const campRef = useRef(EMPTY);
+  currentRef.current = currentId;
+  campRef.current = camp;
   const lastBackup = useRef({}); // id de campagne → date de la dernière copie
-  const history = useRef({ stack: [], prev: null, last: 0, skip: true });
+  const history = useRef({ stack: [], prev: null, last: 0 });
+  // États de campagne qui ne sont pas des modifications (chargement, annulation, version venue
+  // d'un autre appareil). Un ensemble plutôt qu'un drapeau : deux chargements rapprochés ne
+  // peuvent pas « consommer » le drapeau l'un de l'autre.
+  const notEdits = useRef(new WeakSet());
 
   /* Un « setter » par collection, à la manière de useState : setEntities(fn | valeur) */
   const setters = useMemo(
@@ -86,8 +95,10 @@ export function useCampaign() {
 
   /* Affiche une campagne (vide si `data` est absent) et repart d'un historique vierge */
   const show = useCallback((id, data) => {
-    setCamp(normalizeCampaign(data ?? { entities: [] }));
-    history.current = { stack: [], prev: null, last: 0, skip: true };
+    const n = normalizeCampaign(data ?? { entities: [] });
+    notEdits.current.add(n);
+    setCamp(n);
+    history.current = { stack: [], prev: null, last: 0 };
     setCanUndo(false);
     let t = readExport(id);
     if (!t) writeExport(id, (t = Date.now())); // premier rappel dans une semaine
@@ -108,6 +119,7 @@ export function useCampaign() {
         show(index.current, data);
         setCampaigns(index.list);
         setCurrentId(index.current);
+        setDeleted(index.deleted || []);
         setLoaded(true);
       } catch (err) {
         // On ne passe PAS en mode chargé : la sauvegarde automatique écraserait la campagne.
@@ -117,15 +129,20 @@ export function useCampaign() {
     })();
   }, [show]);
 
-  /* Copie de secours horaire, les 10 dernières sont gardées */
-  const backup = async (key, data) => {
-    if (Date.now() - (lastBackup.current[key] ?? 0) < BACKUP_EVERY) return;
+  /* Copie de secours horaire (ou immédiate avec `force`), les 10 dernières sont gardées */
+  const backup = async (key, data, force) => {
+    if (!force && Date.now() - (lastBackup.current[key] ?? 0) < BACKUP_EVERY) return;
     const list = (await get(backupKey(key))) || [];
     lastBackup.current[key] = list[0]?.t ?? 0;
-    if (Date.now() - lastBackup.current[key] < BACKUP_EVERY) return;
+    if (!force && Date.now() - lastBackup.current[key] < BACKUP_EVERY) return;
     await put(backupKey(key), [{ t: Date.now(), data }, ...list].slice(0, BACKUP_MAX));
     lastBackup.current[key] = Date.now();
   };
+
+  /* Marque la campagne ouverte comme modifiée (pour la synchronisation) */
+  const touch = useCallback(() => {
+    setCampaigns((p) => p.map((c) => (c.id === currentRef.current ? { ...c, updatedAt: Date.now() } : c)));
+  }, []);
 
   const save = useCallback(() => {
     const job = pending.current;
@@ -154,8 +171,8 @@ export function useCampaign() {
 
   /* Liste des campagnes et campagne ouverte */
   useEffect(() => {
-    if (loaded) put(INDEX_KEY, { current: currentId, list: campaigns }).catch(() => setSaveState("error"));
-  }, [loaded, currentId, campaigns]);
+    if (loaded) put(INDEX_KEY, { current: currentId, list: campaigns, deleted }).catch(() => setSaveState("error"));
+  }, [loaded, currentId, campaigns, deleted]);
 
   /* Onglet masqué ou fermé : on écrit tout de suite ce qui reste */
   useEffect(() => {
@@ -168,27 +185,31 @@ export function useCampaign() {
   useEffect(() => {
     if (!loaded) return;
     const h = history.current;
-    if (h.skip) {
-      h.skip = false;
+    if (notEdits.current.has(camp)) {
+      // chargement, annulation ou version d'un autre appareil : rien à empiler ni à marquer
       h.last = 0;
     } else {
+      // L'effet peut repasser sans que rien n'ait changé : ce n'est pas une modification
+      if (h.prev && Object.keys(camp).every((k) => camp[k] === h.prev[k])) return;
       if (h.prev && Date.now() - h.last > BURST_MS) {
         h.stack = [...h.stack.slice(-(HISTORY_MAX - 1)), h.prev];
         setCanUndo(true);
       }
       h.last = Date.now();
+      touch(); // vraie modification
     }
     h.prev = camp;
-  }, [camp, loaded]);
+  }, [camp, loaded, touch]);
 
   const undo = useCallback(() => {
     const h = history.current;
     const prev = h.stack.pop();
     if (!prev) return;
-    h.skip = true;
+    notEdits.current.add(prev);
     setCamp(prev);
     setCanUndo(h.stack.length > 0);
-  }, []);
+    touch();
+  }, [touch]);
 
   const updateEntity = useCallback((id, patch) => {
     setCamp((c) => ({ ...c, entities: c.entities.map((e) => (e.id === id ? { ...e, ...patch } : e)) }));
@@ -214,14 +235,14 @@ export function useCampaign() {
       await save();
       const id = uid();
       show(id, data);
-      setCampaigns((p) => [...p, { id, name }]);
+      setCampaigns((p) => [...p, { id, name, updatedAt: Date.now() }]); // créée exprès : à synchroniser
       setCurrentId(id);
     },
     [save, show]
   );
 
   const renameCampaign = useCallback(
-    (name) => setCampaigns((p) => p.map((c) => (c.id === currentId ? { ...c, name } : c))),
+    (name) => setCampaigns((p) => p.map((c) => (c.id === currentId ? { ...c, name, updatedAt: Date.now() } : c))),
     [currentId]
   );
 
@@ -235,6 +256,7 @@ export function useCampaign() {
       show(others[0].id, await get(others[0].id));
       setCampaigns(others);
       setCurrentId(others[0].id);
+      setDeleted((p) => [...p, gone]);
       await del(gone);
       await del(backupKey(gone));
       try {
@@ -291,7 +313,45 @@ export function useCampaign() {
     [createCampaign]
   );
 
+  /* Passerelle pour la synchronisation Google Drive : réassignée à chaque rendu,
+     elle voit toujours l'état le plus récent, même au milieu d'une synchronisation. */
+  const syncBridge = useRef({});
+  syncBridge.current = {
+    local: () => ({ list: campaigns, deleted }),
+    setDeleted,
+    read: async (id) => (id === currentRef.current ? campRef.current : get(id)),
+    /** Remplace (ou ajoute) une campagne par la version venue d'un autre appareil */
+    apply: async (id, name, data, updatedAt) => {
+      const n = normalizeCampaign(data);
+      if (campaigns.some((c) => c.id === id)) {
+        const old = id === currentRef.current ? campRef.current : await get(id);
+        if (old) await backup(id, old, true); // copie de secours avant d'écraser
+      }
+      await put(id, n);
+      if (id === currentRef.current) show(id, n);
+      setCampaigns((p) =>
+        p.some((c) => c.id === id) ? p.map((c) => (c.id === id ? { ...c, name: name || c.name, updatedAt } : c)) : [...p, { id, name: name || "Campagne", updatedAt }]
+      );
+    },
+    /** Supprime une campagne effacée sur un autre appareil (ses copies de secours sont gardées) */
+    remove: async (id) => {
+      if (id === currentRef.current) {
+        const other = campaigns.find((c) => c.id !== id);
+        const nextId = other?.id || uid();
+        pending.current = null;
+        show(nextId, other ? await get(nextId) : null);
+        setCurrentId(nextId);
+        if (!other) setCampaigns((p) => [...p, { id: nextId, name: "Ma campagne" }]);
+      }
+      setCampaigns((p) => p.filter((c) => c.id !== id));
+      await del(id);
+    },
+  };
+  const changeStamp = campaigns.reduce((m, c) => Math.max(m, c.updatedAt || 0), 0);
+
   return {
+    syncBridge,
+    changeStamp,
     ...camp,
     setEntities: setters.entities,
     setCombats: setters.combats,
