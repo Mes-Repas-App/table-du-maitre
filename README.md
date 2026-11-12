@@ -38,8 +38,11 @@ Le résultat se trouve dans `dist/`.
 - **Bestiaire SRD** (onglet Monstres) : recherche en ligne des monstres du SRD 5.2 (règles 2024) ou 5.1 (règles 2014) selon la campagne (noms anglais, via Open5e), ou import d'un fichier JSON ; la fiche est remplie automatiquement, attaques comprises.
 
 ### Sessions et monde
-- **Sessions** : date, résumé, PJ présents, XP à partager (distribués en un clic), trésor. Le résumé de la session précédente s'affiche en « Précédemment… ».
-- **Préparation de séance** : scènes, secrets et indices, PNJ, lieux à cocher une fois joués ; les éléments non joués se reportent dans une nouvelle session.
+- **Sessions**, en trois onglets :
+  - **Préparation** : scènes, secrets et indices, PNJ et lieux à jouer (reliés aux vraies fiches et lieux), à cocher au fil de la partie ; « en scène » transforme un élément en scène du déroulé ; les éléments non joués se reportent dans une nouvelle session.
+  - **Déroulé** : la session racontée scène par scène — type (scène, combat, dialogue, découverte, voyage, note), récit détaillé, **images** (agrandissables et montrables aux joueurs), **liens** vers personnages, PNJ, monstres, lieux et quêtes ; scènes réordonnables et repliables.
+  - **Bilan** : résumé (repris en « Précédemment… » à la session suivante), personnages présents, tout ce qui a été croisé, XP à partager, trésor, pistes pour la suite.
+  - Date réelle et date dans le monde du jeu. Chaque fiche, lieu et quête liste les sessions où il apparaît.
 - **Monde** : quêtes (statut, lieu, commanditaire, récompense, objectifs à cocher), lieux imbriqués (région → ville → taverne) avec type et icône, fil d'Ariane, occupants (PNJ, monstres, personnages) et quêtes du lieu, et documents (lettres, cartes, portraits). Bouton « Montrer aux joueurs » pour les afficher sur l'écran joueurs.
 - **Noms** : le nom d'un élément (fiche, lieu, quête, session, rencontre) est souligné en pointillés avec un crayon ; pour un élément neuf, il est déjà sélectionné : il suffit de taper.
 - **Recherche globale** dans toute la campagne (fiches, objets, sorts, sessions, monde, combats).

@@ -183,9 +183,37 @@ export function newSession(n = 1) {
     xp: 0,
     xpGiven: false,
     loot: "",
-    prep: [], // { id, kind: "scene" | "secret" | "npc" | "place", text, done }
+    prep: [], // { id, kind: "scene" | "secret" | "npc" | "place", text, done, refId (fiche ou lieu lié) }
+    gameDate: "", // date dans le monde du jeu (texte libre)
+    scenes: [], // déroulé détaillé, voir newScene()
+    nextHooks: "", // pistes pour la suite
   };
 }
+
+export const SCENE_KINDS = {
+  scene: { label: "Scène", icon: "🎬" },
+  combat: { label: "Combat", icon: "⚔️" },
+  dialogue: { label: "Dialogue", icon: "💬" },
+  discovery: { label: "Découverte", icon: "🔍" },
+  travel: { label: "Voyage / exploration", icon: "🧭" },
+  note: { label: "Note", icon: "📝" },
+};
+
+export function newScene(extra = {}) {
+  return { id: uid(), title: "Nouvelle scène", kind: "scene", text: "", images: [], entities: [], places: [], quests: [], ...extra };
+}
+
+/** Tout ce qu'une session relie : personnages présents, liens des scènes, préparation */
+export function sessionLinks(s) {
+  const ids = new Set(s.present || []);
+  for (const sc of s.scenes || []) [...(sc.entities || []), ...(sc.places || []), ...(sc.quests || [])].forEach((id) => ids.add(id));
+  for (const p of s.prep || []) if (p.refId) ids.add(p.refId);
+  return ids;
+}
+
+/** Sessions où apparaît une fiche, un lieu ou une quête (les plus récentes d'abord) */
+export const sessionsMentioning = (sessions, id) =>
+  sessions.filter((s) => sessionLinks(s).has(id)).sort((a, b) => (b.date || "").localeCompare(a.date || ""));
 
 export const WORLD_TYPES = {
   quest: { label: "Quêtes", single: "Quête", fresh: "Nouvelle quête" },
@@ -223,6 +251,17 @@ export const PLACE_KINDS = {
   wild: { label: "Nature", icon: "🌲" },
   other: { label: "Autre", icon: "📍" },
 };
+
+/** Lieux dans l'ordre de l'arbre, avec leur profondeur. Un lieu dont le parent
+    n'existe plus est traité comme un lieu principal (il ne disparaît jamais d'une liste). */
+export function placeTree(items, parentId = null, depth = 0) {
+  const ids = new Set(items.map((p) => p.id));
+  const isChild = (p) => (parentId === null ? !p.parentId || !ids.has(p.parentId) : p.parentId === parentId);
+  return items
+    .filter(isChild)
+    .sort((a, b) => a.name.localeCompare(b.name, "fr"))
+    .flatMap((p) => [{ p, depth }, ...placeTree(items, p.id, depth + 1)]);
+}
 
 /** Chemin d'un lieu depuis la racine (« Val-Brume › Le moulin ») ; s'arrête en cas de boucle */
 export function placePath(world, id) {
@@ -497,7 +536,15 @@ export function normalizeCampaign(data) {
   });
   const sessions = arr(data.sessions)
     .filter((s) => s && typeof s === "object")
-    .map((s) => ({ ...newSession(), ...s, present: arr(s.present), prep: arr(s.prep) }));
+    .map((s) => ({
+      ...newSession(),
+      ...s,
+      present: arr(s.present),
+      prep: arr(s.prep),
+      scenes: arr(s.scenes)
+        .filter((sc) => sc && typeof sc === "object")
+        .map((sc) => ({ ...newScene(), ...sc, images: arr(sc.images), entities: arr(sc.entities), places: arr(sc.places), quests: arr(sc.quests) })),
+    }));
   const world = arr(data.world)
     .filter((w) => WORLD_TYPES[w?.type])
     .map((w) => ({ ...newWorldItem(w.type), ...w, objectives: arr(w.objectives), residents: arr(w.residents), kind: PLACE_KINDS[w.kind] ? w.kind : "other" }));

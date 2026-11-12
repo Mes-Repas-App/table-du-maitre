@@ -19,7 +19,7 @@ export default function GlobalSearch({ entities, sessions, world, combats, onPic
     : [
         ...entities.filter((e) => match(e.name, e.race, e.clazz, e.background, e.notes, e.attacks, (e.items || []).map((i) => i.name), (e.spells || []).map((s) => s.name))).map((e) => ({ kind: "entity", id: e.id, name: e.name, group: KINDS[e.kind].single })),
         ...world.filter((w) => match(w.name, w.text, w.giver, w.reward, w.objectives.map((o) => o.text))).map((w) => ({ kind: "world", id: w.id, name: w.name, group: WORLD_TYPES[w.type].single })),
-        ...sessions.filter((s) => match(s.title, s.summary, s.loot, s.prep.map((p) => p.text))).map((s) => ({ kind: "session", id: s.id, name: s.title, group: "Session" })),
+        ...sessions.filter((s) => match(s.title, s.summary, s.loot, s.gameDate, s.nextHooks, s.prep.map((p) => p.text), s.scenes.map((sc) => [sc.title, sc.text]))).map((s) => ({ kind: "session", id: s.id, name: s.title, group: "Session" })),
         ...combats.filter((c) => match(c.name)).map((c) => ({ kind: "combat", id: c.id, name: c.name, group: "Combat" })),
       ].slice(0, 15);
 

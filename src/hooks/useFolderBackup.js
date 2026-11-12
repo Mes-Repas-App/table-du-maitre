@@ -24,7 +24,13 @@ export function useFolderBackup({ loaded, currentId, camp, campaigns, readCampai
   const fail = (err) => {
     console.error("Dossier de sauvegarde :", err);
     const denied = err?.name === "NotAllowedError" || err?.name === "SecurityError";
-    setState((s) => ({ ...s, permission: denied ? "prompt" : s.permission, error: denied ? null : `Écriture impossible : ${err.message}` }));
+    const message =
+      err?.name === "NotFoundError"
+        ? "Dossier introuvable (déplacé, renommé ou supprimé ?). Choisissez-le à nouveau avec « Changer »."
+        : err?.name === "QuotaExceededError"
+          ? "Plus de place sur le disque pour enregistrer la sauvegarde."
+          : `Écriture impossible (${err?.message || err}).`;
+    setState((s) => ({ ...s, permission: denied ? "prompt" : s.permission, error: denied ? null : message }));
   };
 
   /* Empreintes des sauvegardes étrangères (pour ne pas les recopier) et propositions d'import */

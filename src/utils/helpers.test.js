@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { applyHp, nextTurn, removeToken, rollInitiatives, rollFormula, normalizeCampaign, profBonus, newEntity, newToken } from "./helpers.js";
 import { parseAttack, critFormula, takeDamage, inTemplate, inRevealed, saveMod } from "./helpers.js";
 import { fromOpen5e } from "../data/srd.js";
-import { spendHitDie, longRest, hitDieOf, tokenInTemplate, tickEffects, encounterDifficulty, crXp, placePath } from "./helpers.js";
+import { spendHitDie, longRest, hitDieOf, tokenInTemplate, tickEffects, encounterDifficulty, crXp, placePath, sessionsMentioning } from "./helpers.js";
 import { saveCampaignFile, scanFolder, fingerprint } from "../sync/folder.js";
 
 test("Effets à durée : décompte au tour du lanceur, expiration", () => {
@@ -130,6 +130,21 @@ test("Lieux : chemin depuis la racine, résistant aux boucles, et anciens lieux 
   assert.equal(placePath(world, "x").length, 2); // pas de boucle infinie
   const [old] = normalizeCampaign({ entities: [], world: [{ id: "o", type: "place", name: "Ancien" }] }).world;
   assert.deepEqual([old.kind, old.residents], ["other", []]);
+});
+
+test("Sessions : scènes complétées et liens retour vers fiches, lieux et quêtes", () => {
+  const { sessions } = normalizeCampaign({
+    entities: [],
+    sessions: [
+      { id: "s1", date: "2026-01-01", present: ["aria"], prep: [{ id: "x", kind: "npc", text: "Garrick", refId: "garrick" }] },
+      { id: "s2", date: "2026-02-01", scenes: [{ id: "a", title: "Le moulin", places: ["moulin"], entities: ["garrick"] }, { title: "Ancienne scène sans tableaux" }] },
+    ],
+  });
+  assert.deepEqual(sessions[1].scenes[1].images, []); // champs manquants complétés
+  assert.deepEqual(sessions[0].scenes, []); // ancienne session sans déroulé
+  assert.deepEqual(sessionsMentioning(sessions, "garrick").map((s) => s.id), ["s2", "s1"]); // plus récente d'abord
+  assert.deepEqual(sessionsMentioning(sessions, "moulin").map((s) => s.id), ["s2"]);
+  assert.deepEqual(sessionsMentioning(sessions, "aria").map((s) => s.id), ["s1"]);
 });
 
 test("Import : anciennes tailles de pion et règles par défaut", () => {

@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef } from "react";
 import { Plus, Trash2, X, ImagePlus, MonitorPlay, Map as MapIcon, ChevronRight, CornerLeftUp } from "lucide-react";
 import { KINDS } from "../../data/reference.js";
-import { WORLD_TYPES, PLACE_KINDS, newWorldItem, placePath, resizeImage, uid } from "../../utils/helpers.js";
+import { WORLD_TYPES, PLACE_KINDS, newWorldItem, placePath, placeTree, resizeImage, uid } from "../../utils/helpers.js";
 import { Field, TitleInput, inputCls, inputStyle } from "../ui/form.jsx";
 import Portrait from "../ui/Portrait.jsx";
+import SessionMentions from "./SessionMentions.jsx";
 
 export const QUEST_STATUS = {
   rumor: { label: "Rumeur", color: "var(--muted)" },
@@ -16,22 +17,12 @@ const THE = { quest: "la quête", place: "le lieu", handout: "le document" };
 const NAME_LABEL = { quest: "Nom de la quête", place: "Nom du lieu", handout: "Titre du document" };
 const placeIcon = (p) => (PLACE_KINDS[p.kind] || PLACE_KINDS.other).icon;
 
-/** Lieux dans l'ordre de l'arbre, avec leur profondeur. Un lieu dont le parent
-    n'existe plus est traité comme un lieu principal (il ne disparaît jamais de la liste). */
-function placeTree(items, parentId = null, depth = 0) {
-  const ids = new Set(items.map((p) => p.id));
-  const isChild = (p) => (parentId === null ? !p.parentId || !ids.has(p.parentId) : p.parentId === parentId);
-  return items
-    .filter(isChild)
-    .sort((a, b) => a.name.localeCompare(b.name, "fr"))
-    .flatMap((p) => [{ p, depth }, ...placeTree(items, p.id, depth + 1)]);
-}
 
 /**
  * Fiches de monde : quêtes (statut, lieu, objectifs, commanditaire, récompense),
  * lieux imbriqués (type, occupants, quêtes du lieu) et documents à montrer aux joueurs.
  */
-export default function WorldView({ world, setWorld, entities, selectedId, select, showHandout, openEditor }) {
+export default function WorldView({ world, setWorld, entities, sessions, selectedId, select, showHandout, openEditor, openSession }) {
   const selected = world.find((w) => w.id === selectedId);
   const [type, setType] = useState(selected?.type || "quest");
   useEffect(() => {
@@ -136,6 +127,8 @@ export default function WorldView({ world, setWorld, entities, selectedId, selec
             create={create}
             showHandout={showHandout}
             openEditor={openEditor}
+            sessions={sessions}
+            openSession={openSession}
           />
         </div>
       )}
@@ -165,7 +158,7 @@ const SectionTitle = ({ children }) => (
   </span>
 );
 
-function Detail({ item, world, entities, set, setWorld, select, create, showHandout, openEditor }) {
+function Detail({ item, world, entities, set, setWorld, select, create, showHandout, openEditor, sessions, openSession }) {
   const fileRef = useRef(null);
   const [objective, setObjective] = useState("");
   const places = world.filter((w) => w.type === "place");
@@ -428,6 +421,8 @@ function Detail({ item, world, entities, set, setWorld, select, create, showHand
           )}
         </>
       )}
+
+      {item.type !== "handout" && <SessionMentions sessions={sessions} id={item.id} onOpen={openSession} />}
 
       {item.type === "quest" && item.placeId && (
         <button onClick={() => select(item.placeId)} className="inline-flex items-center gap-1 text-[11px]" style={{ color: "var(--arcane)" }}>

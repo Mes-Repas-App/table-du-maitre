@@ -12,6 +12,7 @@ import Resources from "./Resources.jsx";
 import Inventory from "./Inventory.jsx";
 import Spells from "./Spells.jsx";
 import Relations from "./Relations.jsx";
+import SessionMentions from "../campaign/SessionMentions.jsx";
 
 const PROF_LABELS = ["", "maîtrise", "expertise"];
 const TABS = [
@@ -23,7 +24,7 @@ const TABS = [
 
 /** Modale de fiche complète : identité, caractéristiques, maîtrises, PV, états, ressources,
     sorts, inventaire, profil et relations. */
-export default function EntityEditor({ e, update, onClose, onDelete, onDuplicate, entities, openEditor, showHandout }) {
+export default function EntityEditor({ e, update, onClose, onDelete, onDuplicate, entities, openEditor, showHandout, sessions, openSession }) {
   const fileRef = useRef(null);
   const [tab, setTab] = useState("sheet");
   const setAb = (k, v) => update({ abilities: { ...e.abilities, [k]: v } });
@@ -157,7 +158,10 @@ export default function EntityEditor({ e, update, onClose, onDelete, onDuplicate
                 </Field>
               ))}
             </div>
-            <Relations e={e} update={update} entities={entities} openEditor={openEditor} />
+            <div className="space-y-4">
+              <Relations e={e} update={update} entities={entities} openEditor={openEditor} />
+              <SessionMentions sessions={sessions} id={e.id} onOpen={openSession} />
+            </div>
           </div>
         )}
 

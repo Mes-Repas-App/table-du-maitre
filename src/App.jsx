@@ -176,6 +176,15 @@ export default function App() {
       setOpenCombatId(id);
     }
   };
+  /* Navigation entre éléments liés (ferme la fiche ouverte au besoin) */
+  const openWorld = (id) => {
+    setEditingId(null);
+    goTo("world", id);
+  };
+  const openSession = (id) => {
+    setEditingId(null);
+    goTo("session", id);
+  };
 
   /* Onglets : [id, icône, libellé, libellé court (barre du bas), nombre] */
   const tabs = [
@@ -378,8 +387,8 @@ export default function App() {
             openEditor={setEditingId}
           />
         )}
-        {tab === "sessions" && <SessionsView sessions={sessions} setSessions={setSessions} entities={entities} updateEntity={updateEntity} selectedId={sessionId} select={setSessionId} />}
-        {tab === "world" && <WorldView world={world} setWorld={setWorld} entities={entities} selectedId={worldId} select={setWorldId} showHandout={showHandout} openEditor={setEditingId} />}
+        {tab === "sessions" && <SessionsView sessions={sessions} setSessions={setSessions} entities={entities} updateEntity={updateEntity} world={world} selectedId={sessionId} select={setSessionId} openEditor={setEditingId} openWorld={openWorld} showHandout={showHandout} />}
+        {tab === "world" && <WorldView world={world} setWorld={setWorld} entities={entities} sessions={sessions} selectedId={worldId} select={setWorldId} showHandout={showHandout} openEditor={setEditingId} openSession={openSession} />}
       </main>
 
       {editing && (
@@ -389,6 +398,8 @@ export default function App() {
           entities={entities}
           openEditor={setEditingId}
           showHandout={showHandout}
+          sessions={sessions}
+          openSession={openSession}
           update={(patch) => updateEntity(editing.id, patch)}
           onClose={() => setEditingId(null)}
           onDelete={() => {
