@@ -379,7 +379,7 @@ export default function App() {
           />
         )}
         {tab === "sessions" && <SessionsView sessions={sessions} setSessions={setSessions} entities={entities} updateEntity={updateEntity} selectedId={sessionId} select={setSessionId} />}
-        {tab === "world" && <WorldView world={world} setWorld={setWorld} selectedId={worldId} select={setWorldId} showHandout={showHandout} />}
+        {tab === "world" && <WorldView world={world} setWorld={setWorld} entities={entities} selectedId={worldId} select={setWorldId} showHandout={showHandout} openEditor={setEditingId} />}
       </main>
 
       {editing && (

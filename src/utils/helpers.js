@@ -204,8 +204,35 @@ export function newWorldItem(type) {
     giver: "",
     reward: "",
     objectives: [], // { id, text, done }
+    placeId: null, // quêtes : lieu où elle se déroule
     parentId: null, // lieux : lieu parent
+    kind: "other", // lieux : région, ville, taverne… (voir PLACE_KINDS)
+    residents: [], // lieux : ids des fiches (PNJ, monstres, PJ) qui s'y trouvent
   };
+}
+
+export const PLACE_KINDS = {
+  region: { label: "Région", icon: "🗺️" },
+  city: { label: "Ville", icon: "🏰" },
+  village: { label: "Village", icon: "🏘️" },
+  district: { label: "Quartier", icon: "🏙️" },
+  building: { label: "Bâtiment", icon: "🏠" },
+  tavern: { label: "Taverne / auberge", icon: "🍺" },
+  temple: { label: "Temple", icon: "⛪" },
+  dungeon: { label: "Donjon / grotte", icon: "🕳️" },
+  wild: { label: "Nature", icon: "🌲" },
+  other: { label: "Autre", icon: "📍" },
+};
+
+/** Chemin d'un lieu depuis la racine (« Val-Brume › Le moulin ») ; s'arrête en cas de boucle */
+export function placePath(world, id) {
+  const path = [];
+  const seen = new Set();
+  for (let p = world.find((w) => w.id === id); p && !seen.has(p.id); p = world.find((w) => w.id === p.parentId)) {
+    seen.add(p.id);
+    path.unshift(p);
+  }
+  return path;
 }
 
 export function newCombat() {
@@ -473,7 +500,7 @@ export function normalizeCampaign(data) {
     .map((s) => ({ ...newSession(), ...s, present: arr(s.present), prep: arr(s.prep) }));
   const world = arr(data.world)
     .filter((w) => WORLD_TYPES[w?.type])
-    .map((w) => ({ ...newWorldItem(w.type), ...w, objectives: arr(w.objectives) }));
+    .map((w) => ({ ...newWorldItem(w.type), ...w, objectives: arr(w.objectives), residents: arr(w.residents), kind: PLACE_KINDS[w.kind] ? w.kind : "other" }));
   // Règles 2024 par défaut ; 2014 seulement si la campagne l'a choisi
   const settings = { rules: obj(data.settings).rules === "2014" ? "2014" : "2024" };
   return { entities, combats, sessions, world, settings };

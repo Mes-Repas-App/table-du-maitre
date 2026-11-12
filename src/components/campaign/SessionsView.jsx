@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Plus, Trash2, ScrollText, X, Forward, Check } from "lucide-react";
 import { newSession, uid } from "../../utils/helpers.js";
-import { Field, NumInput, inputCls, inputStyle } from "../ui/form.jsx";
+import { Field, NumInput, TitleInput, inputCls, inputStyle } from "../ui/form.jsx";
 import Portrait from "../ui/Portrait.jsx";
 
 const PREP_KINDS = {
@@ -92,13 +92,7 @@ export default function SessionsView({ sessions, setSessions, entities, updateEn
 
             <div className="rounded-xl p-4 space-y-3" style={{ background: "var(--panel)", border: "1px solid var(--edge)" }}>
               <div className="flex flex-wrap items-center gap-2">
-                <input
-                  value={s.title}
-                  onChange={(ev) => set({ title: ev.target.value })}
-                  className="flex-1 basis-full sm:basis-0 min-w-0 bg-transparent outline-none text-xl"
-                  style={{ fontFamily: "var(--display)", color: "var(--parchment)" }}
-                  aria-label="Titre de la session"
-                />
+                <TitleInput key={s.id} value={s.title} onChange={(title) => set({ title })} label="Titre de la session" className="flex-1 basis-full sm:basis-0" />
                 <input type="date" value={s.date} onChange={(ev) => set({ date: ev.target.value })} className="rounded-md px-2 py-1 text-sm outline-none" style={inputStyle} aria-label="Date" />
                 <button
                   onClick={() => {

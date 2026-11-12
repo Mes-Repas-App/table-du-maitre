@@ -21,7 +21,7 @@ import {
   PLAYER_CHANNEL,
 } from "../../utils/helpers.js";
 import { useDismiss } from "../../hooks/useDismiss.js";
-import { inputStyle, NumInput } from "../ui/form.jsx";
+import { inputStyle, NumInput, TitleInput } from "../ui/form.jsx";
 import Tip from "../ui/Tip.jsx";
 import Portrait from "../ui/Portrait.jsx";
 import HpBar from "../ui/HpBar.jsx";
@@ -282,13 +282,7 @@ export default function CombatView({ combat, setCombat, entities, updateEntity, 
         <button onClick={back} className="p-1.5 rounded-md" style={inputStyle} title="Retour aux rencontres">
           <ChevronLeft size={16} />
         </button>
-        <input
-          value={combat.name}
-          onChange={(ev) => setCombat((c) => ({ ...c, name: ev.target.value }))}
-          className="bg-transparent outline-none text-lg min-w-[11rem] flex-1"
-          style={{ fontFamily: "var(--display)", color: "var(--parchment)" }}
-          aria-label="Nom de la rencontre"
-        />
+        <TitleInput value={combat.name} onChange={(name) => setCombat((c) => ({ ...c, name }))} label="Nom de la rencontre" size="text-lg" className="min-w-[11rem] flex-1" />
         {combat.started && (
           <span className="text-xs px-2.5 py-1 rounded-full" style={{ background: "var(--chip)", border: "1px solid var(--gold)", color: "var(--gold)" }}>
             Round {combat.round}

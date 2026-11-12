@@ -3,7 +3,7 @@ import { X, Trash2, Copy, Upload, Zap, Moon, Sun, Coffee, Eye, Star, MonitorPlay
 import { ABILITIES, KINDS, SKILLS, HIT_DICE } from "../../data/reference.js";
 import { mod, fmtMod, clamp, resizeImage, profBonus, hitDieOf, hitDiceMax, spendHitDie, shortRest, longRest } from "../../utils/helpers.js";
 import { useRules } from "../../hooks/useRules.js";
-import { Field, NumInput, inputCls, inputStyle } from "../ui/form.jsx";
+import { Field, NumInput, TitleInput, inputCls, inputStyle } from "../ui/form.jsx";
 import Tip from "../ui/Tip.jsx";
 import Portrait from "../ui/Portrait.jsx";
 import HpControls from "./HpControls.jsx";
@@ -79,13 +79,7 @@ export default function EntityEditor({ e, update, onClose, onDelete, onDuplicate
             }}
           />
           <div className="flex-1 min-w-[8rem]">
-            <input
-              value={e.name}
-              onChange={(ev) => update({ name: ev.target.value })}
-              className="w-full bg-transparent outline-none text-xl md:text-2xl"
-              style={{ fontFamily: "var(--display)", color: "var(--parchment)" }}
-              aria-label="Nom"
-            />
+            <TitleInput value={e.name} onChange={(name) => update({ name })} size="text-xl md:text-2xl" />
             <span className="text-xs uppercase tracking-widest" style={{ color: KINDS[e.kind].ring }}>
               {KINDS[e.kind].single}
             </span>

@@ -40,7 +40,8 @@ Le résultat se trouve dans `dist/`.
 ### Sessions et monde
 - **Sessions** : date, résumé, PJ présents, XP à partager (distribués en un clic), trésor. Le résumé de la session précédente s'affiche en « Précédemment… ».
 - **Préparation de séance** : scènes, secrets et indices, PNJ, lieux à cocher une fois joués ; les éléments non joués se reportent dans une nouvelle session.
-- **Monde** : quêtes (statut, commanditaire, récompense, objectifs à cocher), lieux imbriqués (région → ville → taverne) et documents (lettres, cartes, portraits). Bouton « Montrer aux joueurs » pour les afficher sur l'écran joueurs.
+- **Monde** : quêtes (statut, lieu, commanditaire, récompense, objectifs à cocher), lieux imbriqués (région → ville → taverne) avec type et icône, fil d'Ariane, occupants (PNJ, monstres, personnages) et quêtes du lieu, et documents (lettres, cartes, portraits). Bouton « Montrer aux joueurs » pour les afficher sur l'écran joueurs.
+- **Noms** : le nom d'un élément (fiche, lieu, quête, session, rencontre) est souligné en pointillés avec un crayon ; pour un élément neuf, il est déjà sélectionné : il suffit de taper.
 - **Recherche globale** dans toute la campagne (fiches, objets, sorts, sessions, monde, combats).
 
 ### Combats

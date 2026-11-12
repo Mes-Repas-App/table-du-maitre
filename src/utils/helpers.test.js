@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { applyHp, nextTurn, removeToken, rollInitiatives, rollFormula, normalizeCampaign, profBonus, newEntity, newToken } from "./helpers.js";
 import { parseAttack, critFormula, takeDamage, inTemplate, inRevealed, saveMod } from "./helpers.js";
 import { fromOpen5e } from "../data/srd.js";
-import { spendHitDie, longRest, hitDieOf, tokenInTemplate, tickEffects, encounterDifficulty, crXp } from "./helpers.js";
+import { spendHitDie, longRest, hitDieOf, tokenInTemplate, tickEffects, encounterDifficulty, crXp, placePath } from "./helpers.js";
 import { saveCampaignFile, scanFolder, fingerprint } from "../sync/folder.js";
 
 test("Effets à durée : décompte au tour du lanceur, expiration", () => {
@@ -116,6 +116,20 @@ test("Gabarit : un grand pion est touché par le bord de son espace", () => {
   const loin = { x: 65, y: 50 }; // centre à 3 cases du centre de la sphère
   assert.ok(!tokenInTemplate(sphere, { ...loin, size: 1 }, c));
   assert.ok(tokenInTemplate(sphere, { ...loin, size: 3 }, c)); // pion très grand (3×3)
+});
+
+test("Lieux : chemin depuis la racine, résistant aux boucles, et anciens lieux complétés", () => {
+  const world = [
+    { id: "r", type: "place", name: "Val-Brume", parentId: null },
+    { id: "m", type: "place", name: "Le moulin", parentId: "r" },
+    { id: "c", type: "place", name: "Cave", parentId: "m" },
+    { id: "x", type: "place", name: "Boucle A", parentId: "y" },
+    { id: "y", type: "place", name: "Boucle B", parentId: "x" },
+  ];
+  assert.deepEqual(placePath(world, "c").map((p) => p.name), ["Val-Brume", "Le moulin", "Cave"]);
+  assert.equal(placePath(world, "x").length, 2); // pas de boucle infinie
+  const [old] = normalizeCampaign({ entities: [], world: [{ id: "o", type: "place", name: "Ancien" }] }).world;
+  assert.deepEqual([old.kind, old.residents], ["other", []]);
 });
 
 test("Import : anciennes tailles de pion et règles par défaut", () => {
