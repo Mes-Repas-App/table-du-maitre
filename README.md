@@ -63,38 +63,23 @@ Le résultat se trouve dans `dist/`.
 - **Annuler** (bouton ↶ ou Ctrl+Z) : revient sur les 50 dernières modifications ; les gestes rapprochés (glisser un pion, taper un nom) comptent pour une seule étape.
 - Sauvegarde automatique dans le navigateur (IndexedDB : plusieurs centaines de Mo, cartes et portraits compris). Une ancienne sauvegarde est reprise automatiquement. En cas d'échec, un bandeau rouge propose d'exporter.
 - Export / import en fichier JSON (boutons dans l'en-tête) pour changer de machine ou faire des sauvegardes. Un fichier importé devient une **nouvelle campagne** (rien n'est écrasé) ; les anciens fichiers sont acceptés.
-- **Copies de secours automatiques** : au plus une par heure, les 10 dernières gardées par campagne (menu de campagne → « Copies de secours… »), plus une juste avant qu'une version venue d'un autre appareil ne remplace la vôtre. Un bandeau rappelle d'exporter si le dernier export date de plus d'une semaine (sauf si la synchro Google est active).
-- **Synchronisation Google Drive** (icône nuage dans l'en-tête) : les mêmes campagnes sur l'ordinateur, la tablette et le téléphone. Voir ci-dessous pour l'activer.
+- **Copies de secours automatiques** : au plus une par heure, les 10 dernières gardées par campagne (menu de campagne → « Copies de secours… »). Un bandeau rappelle d'exporter si le dernier export date de plus d'une semaine (sauf si un dossier de sauvegarde est actif).
+- **Dossier de sauvegarde** (bouton dossier dans l'en-tête) : vos campagnes enregistrées en fichiers dans le dossier de votre choix. Voir ci-dessous.
 
 ### Hors ligne
 - Une fois l'appli ouverte une première fois avec une connexion, elle et ses polices fonctionnent sans Internet. Elle peut aussi être installée comme une application (menu du navigateur → « Installer » ou « Ajouter à l'écran d'accueil »).
 - Connecté, la page est toujours chargée à jour. En développement (`npm run dev`), le mode hors ligne est désactivé.
 
-## Synchronisation entre appareils (Google Drive)
+## Dossier de sauvegarde
 
-Les campagnes sont rangées dans le **dossier d'application caché** de votre Google Drive : invisibles dans « Mon Drive », lisibles uniquement par cette appli, et comptées dans votre espace Google.
+Bouton **dossier** dans l'en-tête → **Choisir un dossier…** : chaque campagne y est enregistrée dans son propre fichier JSON (nommé d'après la campagne), mis à jour 2 secondes après chaque modification. Ces fichiers s'importent aussi avec le bouton **Importer**.
 
-**Fonctionnement** : synchronisation à l'ouverture, 20 secondes après chaque modification, au retour sur l'onglet et toutes les 2 minutes. En cas de modifications des deux côtés, **la version la plus récente gagne** ; l'autre est gardée dans les copies de secours de l'appareil. Une campagne supprimée sur un appareil l'est partout. La connexion Google dure environ une heure : ensuite, un clic sur « Reconnecter » (icône nuage) suffit, sans ressaisir de mot de passe.
-
-### Activation (une seule fois, environ 10 minutes)
-
-Il faut un **identifiant client Google** (ce n'est pas un secret : il identifie l'appli, pas votre compte).
-
-1. Ouvrez [console.cloud.google.com](https://console.cloud.google.com) avec votre compte Google et créez un projet (ex. « Table du Maître »).
-2. **API et services → Bibliothèque** : cherchez **Google Drive API** et cliquez sur **Activer**.
-3. **Google Auth Platform** (ou « Écran de consentement OAuth ») : type d'utilisateur **Externe**, nom de l'appli, votre adresse en contact. Dans **Audience**, laissez le statut **En test** et ajoutez votre adresse Gmail (et celles des personnes qui utiliseront l'appli) comme **utilisateurs test**.
-4. **Clients → Créer un client** : type **Application Web**. Dans **Origines JavaScript autorisées**, ajoutez :
-   - `https://mes-repas-app.github.io`
-   - `http://localhost:5173` (pour le développement)
-   
-   Créez, puis copiez l'**ID client** (il finit par `.apps.googleusercontent.com`).
-5. Sur GitHub, dans le dépôt : **Settings → Secrets and variables → Actions → onglet Variables → New repository variable**, nom `GOOGLE_CLIENT_ID`, valeur = l'ID client.
-6. Toujours sur GitHub : **Actions → Déploiement → Run workflow** pour reconstruire le site avec l'identifiant (ou attendez le prochain envoi de code).
-7. Sur chaque appareil : ouvrez le site, cliquez sur l'**icône nuage** → **Se connecter à Google**. Commencez par l'appareil qui contient vos campagnes actuelles, pour qu'elles partent les premières.
-
-Google affiche un avertissement « Google n'a pas validé cette application » tant que l'appli est en test : c'est normal pour une appli personnelle, cliquez sur **Continuer**.
-
-En développement local, mettez l'identifiant dans un fichier `.env.local` (non versionné) : `VITE_GOOGLE_CLIENT_ID=…apps.googleusercontent.com`.
+- **Rien n'est jamais écrasé** : l'appli n'écrit que dans ses propres fichiers (reconnus par un identifiant propre à ce navigateur). Un fichier d'un autre appareil, ou un export manuel, est seulement lu.
+- **Si le dossier contient déjà des sauvegardes** au moment où vous le choisissez, l'appli les liste et vous laisse cocher celles à importer : chacune devient une **nouvelle campagne** (suffixe « (importée) » si le nom existe déjà). Vous pouvez aussi ne rien importer.
+- **Chercher des sauvegardes à importer** (même menu) relance cette recherche à tout moment, par exemple après avoir copié dans le dossier une sauvegarde d'un autre appareil. Une sauvegarde déjà importée n'est reproposée que si le fichier a changé depuis.
+- Astuce : choisissez un dossier synchronisé (Google Drive pour ordinateur, OneDrive, Dropbox…) pour avoir aussi une copie en ligne.
+- **Navigateurs** : possible avec **Chrome** ou **Edge sur ordinateur**. Firefox, Safari et les navigateurs de téléphone ne permettent pas de choisir un dossier : utilisez alors **Exporter** / **Importer**.
+- Après un redémarrage du navigateur, celui-ci peut redemander l'autorisation d'accès au dossier : un bandeau propose **Autoriser**, en un clic.
 
 ## Tests
 
@@ -102,7 +87,7 @@ En développement local, mettez l'identifiant dans un fichier `.env.local` (non 
 npm test
 ```
 
-Vérifie les règles centrales (PV, tours d'initiative, formules de dés, effets à durée, difficulté des rencontres, import des anciens formats) et la synchronisation entre deux appareils simulés.
+Vérifie les règles centrales (PV, tours d'initiative, formules de dés, effets à durée, difficulté des rencontres, import des anciens formats) et le dossier de sauvegarde (aucun fichier d'un autre appareil n'est jamais écrasé).
 
 ## Structure du projet
 

@@ -47,15 +47,17 @@ export default function EntityEditor({ e, update, onClose, onDelete, onDuplicate
 
   return (
     <div
-      className="fixed inset-0 z-40 flex items-start md:items-center justify-center p-2 md:p-6 overflow-y-auto"
+      className="fixed inset-0 z-40 flex items-start md:items-center justify-center sm:p-2 md:p-6 overflow-y-auto"
       style={{ background: "rgba(10,8,5,.8)", backdropFilter: "blur(3px)" }}
       onMouseDown={(ev) => ev.target === ev.currentTarget && onClose()}
     >
-      <div role="dialog" aria-modal="true" aria-label={e.name} className="w-full max-w-3xl rounded-xl my-4 shadow-2xl" style={{ background: "var(--panel)", border: "1px solid var(--edge)" }}>
+      {/* Plein écran sur téléphone, fenêtre sur tablette et ordinateur */}
+      <div role="dialog" aria-modal="true" aria-label={e.name} className="w-full max-w-3xl min-h-full sm:min-h-0 sm:rounded-xl sm:my-4 shadow-2xl sm:border" style={{ background: "var(--panel)", borderColor: "var(--edge)" }}>
+        <div className="sticky top-0 z-10 sm:rounded-t-xl" style={{ background: "var(--panel)" }}>
         {/* En-tête : portrait cliquable, nom, actions */}
-        <div className="flex items-center gap-3 p-4 pb-3" style={{ borderBottom: "1px solid var(--edge)" }}>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 p-3 sm:p-4 sm:pb-3" style={{ borderBottom: "1px solid var(--edge)" }}>
           <button onClick={() => fileRef.current?.click()} className="relative group/img shrink-0" title="Changer l'image">
-            <Portrait e={e} size={64} />
+            <Portrait e={e} size={56} />
             <span className="absolute inset-0 rounded-full hidden group-hover/img:flex items-center justify-center text-white" style={{ background: "rgba(0,0,0,.55)" }}>
               <Upload size={18} />
             </span>
@@ -76,7 +78,7 @@ export default function EntityEditor({ e, update, onClose, onDelete, onDuplicate
               }
             }}
           />
-          <div className="flex-1 min-w-0">
+          <div className="flex-1 min-w-[8rem]">
             <input
               value={e.name}
               onChange={(ev) => update({ name: ev.target.value })}
@@ -88,6 +90,8 @@ export default function EntityEditor({ e, update, onClose, onDelete, onDuplicate
               {KINDS[e.kind].single}
             </span>
           </div>
+          {/* Actions : seconde ligne sur téléphone, à côté du nom ailleurs */}
+          <div className="order-last sm:order-none w-full sm:w-auto flex items-center justify-end gap-1.5">
           {e.kind === "pc" && (
             <button
               onClick={() => update({ inspiration: !e.inspiration })}
@@ -108,17 +112,18 @@ export default function EntityEditor({ e, update, onClose, onDelete, onDuplicate
           <button onClick={onDelete} className="p-2 rounded-md" style={{ ...inputStyle, color: "var(--blood-l)" }} title="Supprimer">
             <Trash2 size={15} />
           </button>
-          <button onClick={onClose} className="p-2 rounded-md" style={inputStyle} title="Fermer (Échap)">
+          </div>
+          <button onClick={onClose} className="p-2 rounded-md shrink-0" style={inputStyle} title="Fermer (Échap)" aria-label="Fermer">
             <X size={15} />
           </button>
         </div>
 
-        <nav className="flex gap-1 px-4 pt-2 overflow-x-auto" style={{ borderBottom: "1px solid var(--edge)" }}>
+        <nav className="flex gap-1 px-2 sm:px-4 pt-1 sm:pt-2 overflow-x-auto no-scrollbar" style={{ borderBottom: "1px solid var(--edge)" }}>
           {TABS.map(([k, label]) => (
             <button
               key={k}
               onClick={() => setTab(k)}
-              className="px-3 py-1.5 text-sm whitespace-nowrap"
+              className="px-2.5 sm:px-3 py-1.5 text-sm whitespace-nowrap"
               style={{ color: tab === k ? "var(--gold)" : "var(--muted)", borderBottom: `2px solid ${tab === k ? "var(--gold)" : "transparent"}`, fontWeight: tab === k ? 700 : 400 }}
               aria-current={tab === k ? "page" : undefined}
             >
@@ -126,19 +131,20 @@ export default function EntityEditor({ e, update, onClose, onDelete, onDuplicate
             </button>
           ))}
         </nav>
+        </div>
 
         {tab === "spells" && (
-          <div className="p-4">
+          <div className="p-3 sm:p-4">
             <Spells e={e} update={update} edit />
           </div>
         )}
         {tab === "gear" && (
-          <div className="p-4">
+          <div className="p-3 sm:p-4">
             <Inventory e={e} update={update} />
           </div>
         )}
         {tab === "profile" && (
-          <div className="p-4 grid md:grid-cols-2 gap-4">
+          <div className="p-3 sm:p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-3">
               {e.kind === "pc" && (
                 <Field label="Points d'expérience">
@@ -161,7 +167,7 @@ export default function EntityEditor({ e, update, onClose, onDelete, onDuplicate
           </div>
         )}
 
-        <div className={tab === "sheet" ? "p-4 grid md:grid-cols-2 gap-4" : "hidden"}>
+        <div className={tab === "sheet" ? "p-3 sm:p-4 grid grid-cols-1 md:grid-cols-2 gap-4" : "hidden"}>
           {/* Colonne gauche : identité + PV + ressources + notes */}
           <div className="space-y-3">
             <div className="grid grid-cols-2 gap-2">

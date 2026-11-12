@@ -285,7 +285,7 @@ export default function CombatView({ combat, setCombat, entities, updateEntity, 
         <input
           value={combat.name}
           onChange={(ev) => setCombat((c) => ({ ...c, name: ev.target.value }))}
-          className="bg-transparent outline-none text-lg min-w-0 flex-1"
+          className="bg-transparent outline-none text-lg min-w-[11rem] flex-1"
           style={{ fontFamily: "var(--display)", color: "var(--parchment)" }}
           aria-label="Nom de la rencontre"
         />
@@ -325,7 +325,7 @@ export default function CombatView({ combat, setCombat, entities, updateEntity, 
         </button>
       </div>
 
-      <div className="grid gap-3 lg:grid-cols-[220px_minmax(0,1fr)]">
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-[220px_minmax(0,1fr)]">
         {/* Ordre d'initiative + ajout de combattants */}
         <div className="rounded-xl p-2.5 self-start" style={{ background: "var(--panel)", border: "1px solid var(--edge)" }}>
           <div className="flex items-center justify-between mb-2 px-1">
@@ -655,8 +655,8 @@ export default function CombatView({ combat, setCombat, entities, updateEntity, 
 function SelectedPanel({ t, f, update, setToken, log, openEditor, close, remove, effectsPanel }) {
   return (
     <div
-      className="fixed z-30 bottom-0 left-0 right-0 md:left-auto md:right-4 md:bottom-4 md:w-96 rounded-t-xl md:rounded-xl shadow-2xl"
-      style={{ background: "var(--panel)", border: "1px solid var(--edge)", maxHeight: "70vh", overflowY: "auto" }}
+      className="fixed z-30 left-0 right-0 md:left-auto md:right-4 md:w-96 rounded-t-xl md:rounded-xl shadow-2xl bottom-[calc(3.6rem+env(safe-area-inset-bottom))] md:bottom-4"
+      style={{ background: "var(--panel)", border: "1px solid var(--edge)", maxHeight: "min(70vh, calc(100dvh - 9rem))", overflowY: "auto", overscrollBehavior: "contain" }}
     >
       <div className="flex items-center gap-2.5 p-3" style={{ borderBottom: "1px solid var(--edge)" }}>
         <Portrait e={f} size={40} dead={f.hp === 0} />

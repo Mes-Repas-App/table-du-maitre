@@ -55,6 +55,29 @@ select:focus {
   outline: none;
 }
 
+/* Rangées d'onglets qui défilent au doigt, sans barre visible */
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* iPhone / iPad : sous 16 px, Safari zoome sur chaque champ touché */
+@supports (-webkit-touch-callout: none) {
+  input,
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
+
+/* Pas de surlignage gris au toucher ; le retour visuel est géré par les boutons */
+button,
+a {
+  -webkit-tap-highlight-color: transparent;
+}
+
 @media (prefers-reduced-motion: reduce) {
   * {
     transition: none !important;

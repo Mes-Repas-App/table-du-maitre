@@ -6,7 +6,7 @@ import { useDismiss } from "../../hooks/useDismiss.js";
 import { inputStyle } from "../ui/form.jsx";
 
 /** Recherche dans toute la campagne : fiches, sessions, monde et combats. */
-export default function GlobalSearch({ entities, sessions, world, combats, onPick }) {
+export default function GlobalSearch({ entities, sessions, world, combats, onPick, full }) {
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
@@ -43,13 +43,13 @@ export default function GlobalSearch({ entities, sessions, world, combats, onPic
           onFocus={() => setOpen(true)}
           onKeyDown={(ev) => ev.key === "Enter" && results[0] && pick(results[0])}
           placeholder="Rechercher dans la campagne…"
-          className="w-48 md:w-64 rounded-md pl-7 pr-2 py-1 text-xs outline-none"
+          className={`${full ? "w-full py-1.5 text-sm" : "w-64 py-1 text-xs"} rounded-md pl-7 pr-2 outline-none`}
           style={inputStyle}
           aria-label="Rechercher dans toute la campagne"
         />
       </label>
       {open && needle && (
-        <div className="absolute right-0 top-full mt-1 z-40 w-72 max-h-80 overflow-y-auto rounded-lg p-1 shadow-2xl" style={{ background: "var(--panel)", border: "1px solid var(--edge)" }}>
+        <div className={`absolute ${full ? "inset-x-0" : "right-0 w-72"} top-full mt-1 z-40 max-h-80 overflow-y-auto rounded-lg p-1 shadow-2xl`} style={{ background: "var(--panel)", border: "1px solid var(--edge)" }}>
           {results.length === 0 && (
             <div className="p-2 text-xs" style={{ color: "var(--muted)" }}>
               Rien trouvé pour « {q} ».

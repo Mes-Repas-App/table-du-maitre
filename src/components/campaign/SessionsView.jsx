@@ -56,9 +56,9 @@ export default function SessionsView({ sessions, setSessions, entities, updateEn
           Aucune session. Créez-en une pour préparer la prochaine séance ou résumer la dernière.
         </div>
       ) : (
-        <div className="grid gap-3 md:grid-cols-[220px_minmax(0,1fr)]">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-[220px_minmax(0,1fr)]">
           {/* Liste des sessions */}
-          <div className="rounded-xl p-2 self-start space-y-0.5" style={{ background: "var(--panel)", border: "1px solid var(--edge)" }}>
+          <div className="rounded-xl p-2 self-start space-y-0.5 max-h-48 md:max-h-none overflow-y-auto" style={{ background: "var(--panel)", border: "1px solid var(--edge)" }}>
             {list.map((x) => (
               <button
                 key={x.id}
@@ -95,7 +95,7 @@ export default function SessionsView({ sessions, setSessions, entities, updateEn
                 <input
                   value={s.title}
                   onChange={(ev) => set({ title: ev.target.value })}
-                  className="flex-1 min-w-[10rem] bg-transparent outline-none text-xl"
+                  className="flex-1 basis-full sm:basis-0 min-w-0 bg-transparent outline-none text-xl"
                   style={{ fontFamily: "var(--display)", color: "var(--parchment)" }}
                   aria-label="Titre de la session"
                 />
@@ -144,7 +144,7 @@ export default function SessionsView({ sessions, setSessions, entities, updateEn
                 </div>
               )}
 
-              <div className="grid sm:grid-cols-[180px_minmax(0,1fr)] gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-[180px_minmax(0,1fr)] gap-3">
                 <Field label="XP gagnés (total du groupe)">
                   <div className="flex gap-1.5">
                     <NumInput min="0" value={s.xp} onChange={(v) => set({ xp: Math.max(0, v) })} className={inputCls} style={inputStyle} />

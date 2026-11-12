@@ -91,8 +91,8 @@ export default function WorldView({ world, setWorld, selectedId, select, showHan
           {type === "handout" && "Aucun document. Lettres, cartes, portraits : préparez ce que vous montrerez aux joueurs."}
         </div>
       ) : (
-        <div className="grid gap-3 md:grid-cols-[240px_minmax(0,1fr)]">
-          <div className="rounded-xl p-2 self-start space-y-0.5" style={{ background: "var(--panel)", border: "1px solid var(--edge)" }}>
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-[240px_minmax(0,1fr)]">
+          <div className="rounded-xl p-2 self-start space-y-0.5 max-h-48 md:max-h-none overflow-y-auto" style={{ background: "var(--panel)", border: "1px solid var(--edge)" }}>
             {rows.map(({ p, depth }) => (
               <button
                 key={p.id}
@@ -137,7 +137,7 @@ function Detail({ item, world, set, setWorld, select, create, showHandout }) {
         <input
           value={item.name}
           onChange={(ev) => set({ name: ev.target.value })}
-          className="flex-1 min-w-[10rem] bg-transparent outline-none text-xl"
+          className="flex-1 basis-full sm:basis-0 min-w-0 bg-transparent outline-none text-xl"
           style={{ fontFamily: "var(--display)", color: "var(--parchment)" }}
           aria-label="Nom"
         />
@@ -165,7 +165,7 @@ function Detail({ item, world, set, setWorld, select, create, showHandout }) {
       </div>
 
       {item.type === "quest" && (
-        <div className="grid sm:grid-cols-3 gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
           <Field label="Statut">
             <select value={item.status} onChange={(ev) => set({ status: ev.target.value })} className={inputCls} style={{ ...inputStyle, color: QUEST_STATUS[item.status]?.color }}>
               {Object.entries(QUEST_STATUS).map(([k, S]) => (

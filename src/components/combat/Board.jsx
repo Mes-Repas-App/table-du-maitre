@@ -60,7 +60,8 @@ const Board = forwardRef(function Board(
         {preview && <Template tp={preview} preview />}
       </svg>
       {pieces.map(({ t, f }) => {
-        const sz = `${(100 / cols) * (t.size || 1)}cqw`;
+        // Taille d'une case, mais jamais moins de ~24 px (sinon impossible à toucher sur téléphone)
+        const sz = `max(${24 * (t.size || 1)}px, ${(100 / cols) * (t.size || 1)}cqw)`;
         const nbStates = f.conditions.length + (f.customConditions || []).length + (f.exhaustion > 0 ? 1 : 0);
         return (
           <div

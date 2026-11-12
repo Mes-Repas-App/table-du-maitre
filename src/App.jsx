@@ -4,8 +4,9 @@ import { RACES, CLASSES, BACKGROUNDS } from "./data/reference.js";
 import { uid, withLog, PLAYER_CHANNEL, openPlayerScreen } from "./utils/helpers.js";
 import { useCampaign } from "./hooks/useCampaign.js";
 import { RulesContext } from "./hooks/useRules.js";
-import { useDriveSync } from "./hooks/useDriveSync.js";
-import SyncButton from "./components/campaign/SyncButton.jsx";
+import { useFolderBackup } from "./hooks/useFolderBackup.js";
+import FolderButton from "./components/campaign/FolderButton.jsx";
+import FolderImportDialog from "./components/campaign/FolderImportDialog.jsx";
 import TextDialog from "./components/ui/TextDialog.jsx";
 import Roster from "./components/entities/Roster.jsx";
 import EntityEditor from "./components/entities/EntityEditor.jsx";
@@ -67,10 +68,11 @@ export default function App() {
     deleteCampaign,
     listBackups,
     restoreBackup,
-    syncBridge,
-    changeStamp,
+    camp,
+    readCampaign,
+    addCampaigns,
   } = useCampaign();
-  const drive = useDriveSync(syncBridge, { loaded, changeStamp });
+  const folder = useFolderBackup({ loaded, currentId, camp, campaigns, readCampaign, addCampaigns });
   const [tab, setTab] = useState("pc");
   const [editingId, setEditingId] = useState(null);
   const [openCombatId, setOpenCombatId] = useState(null);
@@ -175,6 +177,32 @@ export default function App() {
     }
   };
 
+  /* Onglets : [id, icône, libellé, libellé court (barre du bas), nombre] */
+  const tabs = [
+    ["pc", Users, "Personnages", "Persos", entities.filter((e) => e.kind === "pc").length],
+    ["npc", Ghost, "PNJ", "PNJ", entities.filter((e) => e.kind === "npc").length],
+    ["monster", Skull, "Monstres", "Monstres", entities.filter((e) => e.kind === "monster").length],
+    ["combat", Swords, "Combats", "Combats", combats.length],
+    ["sessions", ScrollText, "Sessions", "Sessions", sessions.length],
+    ["world", MapIcon, "Monde", "Monde", world.length],
+  ];
+
+  /* Boutons d'action de l'en-tête (affichés en haut sur ordinateur, en 2e ligne sur téléphone) */
+  const actions = (
+    <>
+      <FolderButton folder={folder} />
+      <button onClick={undo} disabled={!canUndo} className="p-1.5 rounded-md disabled:opacity-35" style={inputStyle} title="Annuler la dernière modification (Ctrl+Z)" aria-label="Annuler">
+        <Undo2 size={16} />
+      </button>
+      <button onClick={exportCampaign} className="p-1.5 rounded-md" style={inputStyle} title="Exporter la campagne (JSON)" aria-label="Exporter la campagne">
+        <Download size={16} />
+      </button>
+      <button onClick={() => importRef.current?.click()} className="p-1.5 rounded-md" style={inputStyle} title="Importer une campagne (JSON) — elle s'ajoute à vos campagnes" aria-label="Importer une campagne">
+        <Upload size={16} />
+      </button>
+    </>
+  );
+
   const tabProps = (id) => ({
     active: tab === id,
     onClick: () => {
@@ -212,15 +240,15 @@ export default function App() {
             </button>
           </div>
         )}
-        {drive.configured && drive.connected && !drive.valid && drive.pending && (
+        {folder.permission === "prompt" && (
           <div className="flex flex-wrap items-center justify-center gap-2 px-3 py-1.5 text-xs" style={{ background: "var(--chip)", color: "var(--parchment)", borderBottom: "1px solid var(--edge)" }} role="status">
-            Session Google expirée : vos dernières modifications ne sont pas encore sur vos autres appareils.
-            <button onClick={drive.connect} className="underline font-semibold" style={{ color: "var(--gold)" }}>
-              Reconnecter
+            Le navigateur demande de ré-autoriser le dossier de sauvegarde « {folder.name} ».
+            <button onClick={folder.reconnect} className="underline font-semibold" style={{ color: "var(--gold)" }}>
+              Autoriser
             </button>
           </div>
         )}
-        {saveState !== "error" && exportDue && !drive.valid && (
+        {saveState !== "error" && exportDue && folder.permission !== "granted" && (
           <div className="flex flex-wrap items-center justify-center gap-2 px-3 py-1.5 text-xs" style={{ background: "var(--chip)", color: "var(--parchment)", borderBottom: "1px solid var(--edge)" }} role="status">
             <Download size={13} style={{ color: "var(--gold)" }} /> Dernier export de « {current?.name} » il y a {days} jours : gardez une copie hors du navigateur.
             <button onClick={exportCampaign} className="underline font-semibold" style={{ color: "var(--gold)" }}>
@@ -239,22 +267,27 @@ export default function App() {
             </button>
           </div>
         )}
-        <div className="max-w-6xl mx-auto px-3 md:px-5 pt-3">
-          <div className="flex items-center gap-3">
-            <Crosshair size={20} style={{ color: "var(--gold)" }} />
-            <h1 className="text-lg md:text-xl tracking-wide" style={{ fontFamily: "var(--display)", color: "var(--parchment)" }}>
-              Table du Maître <span style={{ color: "var(--gold)" }}>·</span>{" "}
-              <span className="text-sm hidden sm:inline" style={{ color: "var(--muted)" }} title="Édition des règles de cette campagne (menu de campagne pour changer)">
+        <div className="max-w-6xl mx-auto px-3 md:px-5 pt-2 md:pt-3">
+          <div className="flex items-center gap-2 md:gap-3">
+            <Crosshair size={20} className="shrink-0" style={{ color: "var(--gold)" }} />
+            <h1 className="hidden md:block text-lg lg:text-xl tracking-wide whitespace-nowrap" style={{ fontFamily: "var(--display)", color: "var(--parchment)" }}>
+              Table du Maître
+              <span className="hidden lg:inline">
+                {" "}
+                <span style={{ color: "var(--gold)" }}>·</span>{" "}
+              </span>
+              <span className="text-sm hidden lg:inline" style={{ color: "var(--muted)" }} title="Édition des règles de cette campagne (menu de campagne pour changer)">
                 D&D 5e · {settings.rules}
               </span>
             </h1>
+            {/* Sur téléphone, le nom de la campagne tient lieu de titre */}
             <select
               value={currentId}
               onChange={(ev) => onCampaignMenu(ev.target.value)}
-              className="min-w-0 max-w-[11rem] rounded-md px-2 py-1 text-xs outline-none truncate"
-              style={inputStyle}
+              className="min-w-0 flex-1 md:flex-initial md:max-w-[13rem] rounded-md px-2 py-1.5 md:py-1 text-sm md:text-xs outline-none truncate"
+              style={{ ...inputStyle, fontFamily: "var(--display)" }}
               aria-label="Campagne"
-              title="Changer de campagne"
+              title={`Changer de campagne (règles ${settings.rules})`}
             >
               {campaigns.map((c) => (
                 <option key={c.id} value={c.id}>
@@ -268,20 +301,11 @@ export default function App() {
               <option value="__backups">⟲ Copies de secours…</option>
               <option value="__delete">✕ Supprimer…</option>
             </select>
-            <div className="ml-auto flex items-center gap-2">
+            <div className="ml-auto flex items-center gap-2 shrink-0">
               <span className="text-[10px] hidden lg:block" style={{ color: "var(--muted)" }}>
                 {saveState === "saving" ? "Sauvegarde…" : saveState === "saved" ? "Campagne sauvegardée" : ""}
               </span>
-              <SyncButton sync={drive} />
-              <button onClick={undo} disabled={!canUndo} className="p-1.5 rounded-md disabled:opacity-35" style={inputStyle} title="Annuler la dernière modification (Ctrl+Z)">
-                <Undo2 size={14} />
-              </button>
-              <button onClick={exportCampaign} className="p-1.5 rounded-md" style={inputStyle} title="Exporter la campagne (JSON)">
-                <Download size={14} />
-              </button>
-              <button onClick={() => importRef.current?.click()} className="p-1.5 rounded-md" style={inputStyle} title="Importer une campagne (JSON) — elle s'ajoute à vos campagnes">
-                <Upload size={14} />
-              </button>
+              <div className="hidden md:flex items-center gap-2">{actions}</div>
               <input
                 ref={importRef}
                 type="file"
@@ -296,26 +320,52 @@ export default function App() {
               <DiceRoller onRoll={tab === "combat" && openCombat ? (msg) => setCombat((c) => withLog(c, msg)) : undefined} />
             </div>
           </div>
-          <div className="flex items-end gap-2 mt-1">
-            <nav className="flex gap-1 overflow-x-auto flex-1 min-w-0">
-              <TabBtn {...tabProps("pc")} icon={Users} label="Personnages" count={entities.filter((e) => e.kind === "pc").length} />
-              <TabBtn {...tabProps("npc")} icon={Ghost} label="PNJ" count={entities.filter((e) => e.kind === "npc").length} />
-              <TabBtn {...tabProps("monster")} icon={Skull} label="Monstres" count={entities.filter((e) => e.kind === "monster").length} />
-              <TabBtn {...tabProps("combat")} icon={Swords} label="Combats" count={combats.length} />
-              <TabBtn {...tabProps("sessions")} icon={ScrollText} label="Sessions" count={sessions.length} />
-              <TabBtn {...tabProps("world")} icon={MapIcon} label="Monde" count={world.length} />
+          {/* Téléphone : recherche et actions sur une seconde ligne */}
+          <div className="flex md:hidden items-center gap-1.5 mt-2 pb-2">
+            <div className="flex-1 min-w-0">
+              <GlobalSearch entities={entities} sessions={sessions} world={world} combats={combats} onPick={goTo} full />
+            </div>
+            {actions}
+          </div>
+          {/* Tablette et ordinateur : onglets en haut */}
+          <div className="hidden md:flex items-end gap-2 mt-1">
+            <nav className="flex gap-1 flex-1 min-w-0">
+              {tabs.map(([id, icon, label, , count]) => (
+                <TabBtn key={id} {...tabProps(id)} icon={icon} label={label} count={count} />
+              ))}
             </nav>
-            <div className="pb-1.5 hidden sm:block">
+            <div className="pb-1.5">
               <GlobalSearch entities={entities} sessions={sessions} world={world} combats={combats} onPick={goTo} />
             </div>
           </div>
         </div>
       </header>
 
-      <main className="max-w-6xl mx-auto px-3 md:px-5 py-5 pb-28">
-        <div className="sm:hidden mb-4">
-          <GlobalSearch entities={entities} sessions={sessions} world={world} combats={combats} onPick={goTo} />
-        </div>
+      {/* Téléphone : onglets en bas de l'écran, à portée de pouce */}
+      <nav
+        className="md:hidden fixed bottom-0 inset-x-0 z-30 grid grid-cols-6"
+        style={{ background: "rgba(20,17,12,.97)", borderTop: "1px solid var(--edge)", paddingBottom: "env(safe-area-inset-bottom)" }}
+      >
+        {tabs.map(([id, Icon, , short, count]) => {
+          const { active, onClick } = tabProps(id);
+          return (
+            <button
+              key={id}
+              onClick={onClick}
+              className="relative flex flex-col items-center justify-center gap-0.5 py-2 text-[10px] leading-none"
+              style={{ color: active ? "var(--gold)" : "var(--muted)", fontWeight: active ? 700 : 400 }}
+              aria-current={active ? "page" : undefined}
+              aria-label={`${short} (${count})`}
+            >
+              {active && <span className="absolute top-0 inset-x-3 h-0.5 rounded-full" style={{ background: "var(--gold)" }} />}
+              <Icon size={19} />
+              {short}
+            </button>
+          );
+        })}
+      </nav>
+
+      <main className="max-w-6xl mx-auto px-3 md:px-5 py-4 md:py-5 pb-24 md:pb-28">
         {["pc", "npc", "monster"].includes(tab) && <Roster kind={tab} entities={entities} setEntities={setEntities} openEditor={setEditingId} />}
         {tab === "combat" && !openCombat && <CombatList combats={combats} setCombats={setCombats} open={setOpenCombatId} />}
         {tab === "combat" && openCombat && (
@@ -361,6 +411,7 @@ export default function App() {
 
       {backupsOpen && <BackupsDialog listBackups={listBackups} restore={restoreBackup} onClose={() => setBackupsOpen(false)} />}
       {ask && <TextDialog {...ask} onClose={() => setAsk(null)} />}
+      {folder.found && <FolderImportDialog found={folder.found} onDone={folder.finishImport} />}
     </div>
     </RulesContext.Provider>
   );
