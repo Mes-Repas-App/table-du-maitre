@@ -267,9 +267,14 @@ export function useCampaign() {
         alert("Fichier de campagne invalide.");
         return;
       }
-      await createCampaign(String(data.name || file.name.replace(/\.json$/i, "")), data);
+      // Nom déjà pris : « (importée) » pour distinguer les deux campagnes dans le menu
+      const base = String(data.name || file.name.replace(/\.json$/i, ""));
+      const taken = new Set(campaigns.map((c) => c.name));
+      let name = taken.has(base) ? `${base} (importée)` : base;
+      for (let i = 2; taken.has(name); i++) name = `${base} (importée ${i})`;
+      await createCampaign(name, data);
     },
-    [createCampaign]
+    [createCampaign, campaigns]
   );
 
   /* Pour le dossier de sauvegarde : lecture de n'importe quelle campagne, et ajout de

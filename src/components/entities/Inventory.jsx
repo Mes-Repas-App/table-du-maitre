@@ -23,7 +23,7 @@ export default function Inventory({ e, update }) {
     <div className="space-y-4">
       <div>
         <span className="block text-[11px] uppercase tracking-widest mb-1.5" style={{ color: "var(--muted)" }}>
-          Bourse — {Math.round(total * 100) / 100} po au total
+          Bourse — {(Math.round(total * 100) / 100).toLocaleString("fr-FR")} po au total
         </span>
         <div className="grid grid-cols-5 gap-2">
           {COINS.map(([k, abbr, full]) => (
