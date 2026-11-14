@@ -63,12 +63,13 @@ export function useFolderBackup({ loaded, currentId, camp, campaigns, readCampai
     return matchCandidates(res.candidates, locals, res.own);
   }, []);
 
-  const write = useCallback(async (campaignId, name, data) => {
+  const write = useCallback(async (campaignId, name, data, { force = false } = {}) => {
     if (!rec.current) return;
     const print = fingerprint(data);
-    // Contenu et nom identiques à notre dernier fichier : rien à réécrire (sa date reste celle de la vraie dernière modification)
+    // Écriture automatique d'un contenu identique à notre dernier fichier : inutile (sa date reste celle de
+    // la vraie dernière modification). Le bouton « Sauvegarder » (force) écrit toujours.
     const last = own.current[campaignId];
-    if (last?.print === print && last.name === name) return;
+    if (!force && last?.print === print && last.name === name) return;
     const files = await saveCampaignFile(rec.current.handle, rec.current.files, {
       installId: installId.current,
       campaignId,
@@ -195,8 +196,15 @@ export function useFolderBackup({ loaded, currentId, camp, campaigns, readCampai
     const { currentId: id, camp: data, campaigns: list } = latest.current;
     try {
       if (!scannedRef.current) await scan(); // sinon notre écriture masquerait une version plus récente d'un autre appareil
-      await write(id, list.find((c) => c.id === id)?.name, data);
-      return { file: rec.current.files[id] };
+      if (!hasContent(data)) return { empty: true };
+      const before = Date.now();
+      await write(id, list.find((c) => c.id === id)?.name, data, { force: true });
+      // Preuve : on relit le fichier dans le dossier et on vérifie que c'est bien la version qu'on vient d'écrire
+      const file = rec.current.files[id];
+      const head = await (await (await rec.current.handle.getFileHandle(file)).getFile()).slice(0, 400).text();
+      const savedAt = Number(head.match(/"savedAt":(\d+)/)?.[1]);
+      if (!head.includes(`"campaignId":"${id}"`) || !(savedAt >= before)) return { error: `le fichier « ${file} » n'a pas été mis à jour.` };
+      return { file, savedAt };
     } catch (err) {
       return { error: fail(err) };
     }

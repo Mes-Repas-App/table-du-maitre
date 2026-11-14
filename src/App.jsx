@@ -134,7 +134,15 @@ export default function App() {
     if (folder.permission === "granted") {
       const r = await folder.saveNow();
       if (r.error) return setSaved({ ok: false, lines: [...lines, `Dossier « ${folder.name} » : ${r.error}`] });
-      setSaved({ ok: true, lines: [...lines, r.file ? `Copie dans le dossier « ${folder.name} » (${r.file}).` : `Rien à copier dans le dossier « ${folder.name} » : la campagne est encore vide.`] });
+      setSaved({
+        ok: true,
+        lines: [
+          ...lines,
+          r.empty
+            ? `Rien à écrire dans le dossier « ${folder.name} » : la campagne est encore vide.`
+            : `Écrite dans le dossier « ${folder.name} », fichier « ${r.file} » (relu et vérifié à ${new Date(r.savedAt).toLocaleTimeString("fr-FR")}).`,
+        ],
+      });
     } else if (folder.permission === "prompt") {
       setSaved({ ok: false, lines: [...lines, `Le dossier « ${folder.name} » doit être ré-autorisé : rien n'y a été écrit.`], offer: "reconnect" });
     } else {
