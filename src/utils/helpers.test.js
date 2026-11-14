@@ -5,7 +5,7 @@ import { applyHp, nextTurn, removeToken, rollInitiatives, rollFormula, normalize
 import { parseAttack, critFormula, takeDamage, inTemplate, inRevealed, saveMod } from "./helpers.js";
 import { fromOpen5e } from "../data/srd.js";
 import { spendHitDie, longRest, hitDieOf, tokenInTemplate, tickEffects, encounterDifficulty, crXp, placePath, sessionsMentioning } from "./helpers.js";
-import { saveCampaignFile, scanFolder, fingerprint } from "../sync/folder.js";
+import { saveCampaignFile, scanFolder, fingerprint, matchCandidates } from "../sync/folder.js";
 
 test("Effets à durée : décompte au tour du lanceur, expiration", () => {
   let c = { activeId: "A", effects: [{ id: "e1", tokenId: "B", ownerId: "A", rounds: 2 }, { id: "e2", tokenId: "A", ownerId: "C", rounds: 1 }] };
@@ -97,6 +97,31 @@ test("Dossier : propose les sauvegardes des autres, pas les siennes ni les doubl
   dir.files.set("Tel.json", JSON.stringify({ installId: "TEL", campaignId: "a", name: "Campagne du téléphone", savedAt: 9, ...campaignData("Cyra2") }));
   const newer = await scanFolder(dir, { installId: "PC", imported: { "Tel.json": 5 } });
   assert.ok(newer.candidates.some((c) => c.fileName === "Tel.json"));
+});
+
+test("Dossier : une sauvegarde de la même campagne est proposée en mise à jour", async () => {
+  const withSync = (who, syncId) => ({ ...campaignData(who), settings: { rules: "2024", syncId } });
+  // L'identifiant commun survit à la normalisation mais pas à l'empreinte (même contenu = doublon)
+  assert.equal(normalizeCampaign(withSync("A", "S1")).settings.syncId, "S1");
+  assert.equal(fingerprint(withSync("A", "S1")), fingerprint(withSync("A", "S2")));
+  const dir = fakeDir({
+    "Tel.json": JSON.stringify({ installId: "TEL", campaignId: "x", name: "Terres (renommée)", savedAt: 20, ...withSync("Cyra", "S1") }),
+    "Ancienne.json": JSON.stringify({ installId: "TEL", campaignId: "y", name: "Ma campagne", savedAt: 5, ...campaignData("Bran") }),
+    "Neuve.json": JSON.stringify({ installId: "TEL", campaignId: "z", name: "Autre", savedAt: 30, ...campaignData("Dana") }),
+    "Moi.json": JSON.stringify({ installId: "PC", campaignId: "loc2", name: "Ma campagne", savedAt: 10, ...campaignData("Aria") }),
+  });
+  const { candidates, own } = await scanFolder(dir, { installId: "PC" });
+  assert.equal(own.loc2.savedAt, 10);
+  const locals = [
+    { id: "loc1", name: "Terres", syncId: "S1" },
+    { id: "loc2", name: "Ma campagne (importée)" },
+  ];
+  const m = Object.fromEntries(matchCandidates(candidates, locals, own).map((c) => [c.fileName, c]));
+  assert.equal(m["Tel.json"].target, "loc1"); // même syncId, malgré un autre nom
+  assert.equal(m["Tel.json"].newer, true); // rien d'écrit ici pour loc1
+  assert.equal(m["Ancienne.json"].target, "loc2"); // même nom, au suffixe près
+  assert.equal(m["Ancienne.json"].newer, false); // plus ancienne que notre version (10)
+  assert.equal(m["Neuve.json"].target, undefined); // inconnue ici : nouvelle campagne
 });
 
 test("Dés de vie et repos long selon les règles 2014 / 2024", () => {

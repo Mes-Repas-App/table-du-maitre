@@ -4,7 +4,8 @@
 
    Règle d'or : on n'écrase jamais un fichier qui n'est pas à nous. Nos fichiers portent
    l'identifiant de ce navigateur (installId) ; tout autre fichier est seulement lu, et proposé
-   à l'import en nouvelle campagne. */
+   à l'import : en nouvelle campagne, ou en mise à jour de la même campagne (même syncId,
+   ou à défaut même nom) si elle existe déjà ici. */
 
 import { normalizeCampaign } from "../utils/helpers.js";
 
@@ -14,10 +15,10 @@ const hasContent = (d) => ["entities", "combats", "sessions", "world"].some((k) 
 export const safeName = (s) => String(s || "").replace(/[\\/:*?"<>|]+/g, "-").replace(/\s+/g, " ").trim().slice(0, 60) || "Campagne";
 const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-/** Empreinte du contenu d'une campagne, pour repérer les doublons exacts */
+/** Empreinte du contenu d'une campagne, pour repérer les doublons exacts (l'identifiant commun n'en fait pas partie) */
 export function fingerprint(data) {
   const n = normalizeCampaign(data);
-  return JSON.stringify([n.entities, n.combats, n.sessions, n.world, n.settings]);
+  return JSON.stringify([n.entities, n.combats, n.sessions, n.world, n.settings.rules]);
 }
 
 async function exists(dir, name) {
@@ -77,17 +78,23 @@ export async function saveCampaignFile(dir, files, { installId, campaignId, name
  * à proposer à l'import, sauf celles déjà présentes à l'identique dans l'appli et celles
  * déjà importées (`imported` : nom de fichier → date de la version importée). Une version
  * plus récente d'un fichier déjà importé est de nouveau proposée.
+ * `own` : pour nos propres fichiers, campagne → { savedAt, print, name } (dernière version écrite ici).
  */
 export async function scanFolder(dir, { installId, localPrints = new Set(), imported = {} }) {
   const candidates = [];
   const foreignPrints = new Set();
+  const own = {};
   for await (const [fileName, handle] of dir.entries()) {
     if (handle.kind !== "file" || !/\.json$/i.test(fileName)) continue;
     try {
       const file = await handle.getFile();
       const json = JSON.parse(await file.text());
-      if (json.installId && json.installId === installId) continue; // nos propres sauvegardes
       const n = normalizeCampaign(json); // lève une erreur si ce n'est pas une campagne
+      if (json.installId && json.installId === installId) {
+        // nos propres sauvegardes : on retient seulement la dernière version écrite
+        own[json.campaignId] = { savedAt: json.savedAt || file.lastModified, print: fingerprint(json), name: json.name };
+        continue;
+      }
       const print = fingerprint(json);
       foreignPrints.add(print);
       const savedAt = json.savedAt || file.lastModified;
@@ -97,11 +104,27 @@ export async function scanFolder(dir, { installId, localPrints = new Set(), impo
         name: String(json.name || fileName.replace(/\.json$/i, "")),
         data: json,
         savedAt,
+        syncId: n.settings.syncId || null,
         counts: { entities: n.entities.length, combats: n.combats.length, sessions: n.sessions.length, world: n.world.length },
       });
     } catch {
       /* autre fichier JSON : ignoré */
     }
   }
-  return { candidates: candidates.sort((a, b) => b.savedAt - a.savedAt), foreignPrints };
+  return { candidates: candidates.sort((a, b) => b.savedAt - a.savedAt), foreignPrints, own };
+}
+
+const baseName = (n) => String(n).replace(/ \(importée(?: \d+)?\)$/, "");
+
+/**
+ * Relie chaque sauvegarde trouvée à la campagne locale correspondante, s'il y en a une :
+ * même identifiant commun (syncId), ou à défaut même nom (au suffixe « (importée) » près).
+ * `newer` : la sauvegarde est plus récente que la dernière version de cette campagne écrite ici.
+ * `locals` : [{ id, name, syncId }] ; `own` : renvoyé par scanFolder.
+ */
+export function matchCandidates(candidates, locals, own = {}) {
+  return candidates.map((f) => {
+    const t = (f.syncId && locals.find((l) => l.syncId === f.syncId)) || locals.find((l) => baseName(l.name) === baseName(f.name));
+    return t ? { ...f, target: t.id, targetName: t.name, newer: f.savedAt > (own[t.id]?.savedAt || 0) } : f;
+  });
 }

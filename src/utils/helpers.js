@@ -549,7 +549,9 @@ export function normalizeCampaign(data) {
     .filter((w) => WORLD_TYPES[w?.type])
     .map((w) => ({ ...newWorldItem(w.type), ...w, objectives: arr(w.objectives), residents: arr(w.residents), kind: PLACE_KINDS[w.kind] ? w.kind : "other" }));
   // Règles 2024 par défaut ; 2014 seulement si la campagne l'a choisi
-  const settings = { rules: obj(data.settings).rules === "2014" ? "2014" : "2024" };
+  const s = obj(data.settings);
+  // syncId : identifiant commun d'une même campagne sur plusieurs appareils (voyage dans les fichiers)
+  const settings = { rules: s.rules === "2014" ? "2014" : "2024", ...(typeof s.syncId === "string" && s.syncId ? { syncId: s.syncId } : {}) };
   return { entities, combats, sessions, world, settings };
 }
 

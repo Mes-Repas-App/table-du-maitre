@@ -93,7 +93,7 @@ export default function FolderButton({ folder }) {
                   <LogOut size={12} />
                 </button>
               </div>
-              <p className="text-[10px]">L'appli n'écrit que dans ses propres fichiers ; les sauvegardes d'autres appareils sont seulement lues, et proposées à l'import.</p>
+              <p className="text-[10px]">L'appli n'écrit que dans ses propres fichiers. Les sauvegardes des autres appareils sont seulement lues : une version plus récente d'une de vos campagnes vous est proposée en mise à jour (à l'ouverture et au retour sur l'appli).</p>
             </>
           )}
         </div>

@@ -76,8 +76,9 @@ export default function App() {
     camp,
     readCampaign,
     addCampaigns,
+    replaceCampaign,
   } = useCampaign();
-  const folder = useFolderBackup({ loaded, currentId, camp, campaigns, readCampaign, addCampaigns });
+  const folder = useFolderBackup({ loaded, currentId, camp, campaigns, readCampaign, addCampaigns, replaceCampaign });
   const [tab, setTab] = useState("pc");
   const [editingId, setEditingId] = useState(null);
   const [openCombatId, setOpenCombatId] = useState(null);

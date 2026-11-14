@@ -64,6 +64,8 @@ export function useCampaign() {
   /* Affiche une campagne (vide si `data` est absent) et repart d'un historique vierge */
   const show = useCallback((id, data) => {
     const n = normalizeCampaign(data ?? { entities: [] });
+    // Identifiant commun, attribué à l'ouverture : il suit la campagne dans ses fichiers de sauvegarde
+    if (!n.settings.syncId) n.settings = { ...n.settings, syncId: uid() + uid() };
     notEdits.current.add(n);
     setCamp(n);
     history.current = { stack: [], prev: null, last: 0 };
@@ -298,10 +300,31 @@ export function useCampaign() {
     return added;
   }, []);
 
+  /**
+   * Remplace le contenu d'une campagne par une version venue d'un autre appareil.
+   * La version actuelle part d'abord dans les copies de secours ; sur la campagne ouverte,
+   * c'est une modification ordinaire (donc annulable avec Ctrl+Z).
+   */
+  const replaceCampaign = useCallback(
+    async (id, data) => {
+      const old = id === currentId ? camp : await get(id);
+      const n = normalizeCampaign(data);
+      if (old) {
+        const list = (await get(backupKey(id))) || [];
+        await put(backupKey(id), [{ t: Date.now(), data: old }, ...list].slice(0, BACKUP_MAX));
+        if (!n.settings.syncId && old.settings?.syncId) n.settings = { ...n.settings, syncId: old.settings.syncId };
+      }
+      if (id === currentId) setCamp(n);
+      else await put(id, n);
+    },
+    [currentId, camp]
+  );
+
   return {
     camp, // l'objet complet (référence stable entre deux modifications)
     readCampaign,
     addCampaigns,
+    replaceCampaign,
     ...camp,
     setEntities: setters.entities,
     setCombats: setters.combats,

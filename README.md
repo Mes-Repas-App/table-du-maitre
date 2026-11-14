@@ -80,10 +80,11 @@ Le résultat se trouve dans `dist/`.
 Bouton **dossier** dans l'en-tête → **Choisir un dossier…** : chaque campagne y est enregistrée dans son propre fichier JSON (nommé d'après la campagne), mis à jour 2 secondes après chaque modification. Ces fichiers s'importent aussi avec le bouton **Importer**.
 
 - **Rien n'est jamais écrasé** : l'appli n'écrit que dans ses propres fichiers (reconnus par un identifiant propre à ce navigateur). Un fichier d'un autre appareil, ou un export manuel, est seulement lu.
-- **Si le dossier contient déjà des sauvegardes** au moment où vous le choisissez, l'appli les liste et vous laisse cocher celles à importer : chacune devient une **nouvelle campagne** (suffixe « (importée) » si le nom existe déjà). Vous pouvez aussi ne rien importer.
+- **Si le dossier contient déjà des sauvegardes** au moment où vous le choisissez, l'appli les liste. Pour une campagne qui existe déjà ici, vous choisissez entre **la mettre à jour** et l'ajouter comme nouvelle campagne ; les autres deviennent de **nouvelles campagnes** (suffixe « (importée) » si le nom existe déjà). Vous pouvez aussi ne rien importer.
+- **Plusieurs appareils** (ordinateur et téléphone sur le même dossier Drive, par exemple) : chaque campagne porte un identifiant commun qui la suit d'un appareil à l'autre. À l'ouverture de l'appli et au retour sur l'onglet, si un autre appareil a enregistré une version **plus récente** d'une de vos campagnes, l'appli propose de la **mettre à jour**. La version remplacée part dans les copies de secours, et Ctrl+Z annule la mise à jour de la campagne ouverte. Une campagne importée avant cette fonction est reconnue par son nom.
 - **Chercher des sauvegardes à importer** (même menu) relance cette recherche à tout moment, par exemple après avoir copié dans le dossier une sauvegarde d'un autre appareil. Une sauvegarde déjà importée n'est reproposée que si le fichier a changé depuis.
-- Astuce : choisissez un dossier synchronisé (Google Drive pour ordinateur, OneDrive, Dropbox…) pour avoir aussi une copie en ligne.
-- **Navigateurs** : possible avec **Chrome** ou **Edge sur ordinateur**. Firefox, Safari et les navigateurs de téléphone ne permettent pas de choisir un dossier : utilisez alors **Exporter** / **Importer**.
+- Astuce : choisissez un dossier synchronisé (Google Drive pour ordinateur : « Mon Drive » sur le lecteur G:, OneDrive, Dropbox…) pour avoir aussi une copie en ligne.
+- **Navigateurs** : possible avec **Chrome** ou **Edge** (et Chrome sur Android). Firefox et Safari ne permettent pas de choisir un dossier : utilisez alors **Exporter** / **Importer**.
 - Après un redémarrage du navigateur, celui-ci peut redemander l'autorisation d'accès au dossier : un bandeau propose **Autoriser**, en un clic.
 
 ## Tests
