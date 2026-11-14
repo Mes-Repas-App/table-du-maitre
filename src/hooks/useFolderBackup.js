@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { get, put, del } from "./db.js";
 import { uid } from "../utils/helpers.js";
-import { folderSupported, saveCampaignFile, scanFolder, fingerprint, matchCandidates } from "../sync/folder.js";
+import { folderSupported, saveCampaignFile, removeCampaignFile, scanFolder, fingerprint, matchCandidates, hasContent, withoutSync } from "../sync/folder.js";
 
 const FOLDER_KEY = "__folder"; // { handle, files: { campaignId: nomDeFichier }, imported: { nomDeFichier: savedAt } }
 const INSTALL_KEY = "__install"; // identifiant de ce navigateur, écrit dans nos fichiers
@@ -23,7 +23,8 @@ export function useFolderBackup({ loaded, currentId, camp, campaigns, readCampai
   const [scanned, setScanned] = useState(false);
   const rec = useRef(null);
   const installId = useRef(null);
-  const foreignPrints = useRef(new Set());
+  const cache = useRef(new Map()); // fichiers déjà lus et inchangés : pas relus à chaque vérification
+  const scannedRef = useRef(false);
   const own = useRef({}); // campagne → { savedAt, print } de notre dernière écriture
   const declined = useRef(new Set()); // mises à jour refusées pendant cette visite (fichier@date)
   const lastCheck = useRef(0);
@@ -53,11 +54,11 @@ export function useFolderBackup({ loaded, currentId, camp, campaigns, readCampai
       const d = await readCampaign(c.id);
       if (!d) continue;
       localPrints.add(fingerprint(d));
-      locals.push({ ...c, syncId: d.settings?.syncId });
+      locals.push({ ...c, syncId: d.settings?.syncId, empty: !hasContent(d) });
     }
-    const res = await scanFolder(rec.current.handle, { installId: installId.current, localPrints, imported: rec.current.imported || {} });
-    foreignPrints.current = res.foreignPrints;
+    const res = await scanFolder(rec.current.handle, { installId: installId.current, localPrints, imported: rec.current.imported || {}, cache: cache.current });
     own.current = res.own;
+    scannedRef.current = true;
     setScanned(true);
     return matchCandidates(res.candidates, locals, res.own);
   }, []);
@@ -73,9 +74,8 @@ export function useFolderBackup({ loaded, currentId, camp, campaigns, readCampai
       campaignId,
       name,
       data,
-      foreignPrints: foreignPrints.current,
     });
-    own.current = { ...own.current, [campaignId]: { savedAt: Date.now(), print, name } };
+    if (hasContent(data)) own.current = { ...own.current, [campaignId]: { savedAt: Date.now(), print, name } };
     if (files !== rec.current.files) {
       rec.current = { ...rec.current, files };
       await put(FOLDER_KEY, rec.current);
@@ -96,7 +96,8 @@ export function useFolderBackup({ loaded, currentId, camp, campaigns, readCampai
   const checkUpdates = useCallback(async () => {
     if (!rec.current || Date.now() - lastCheck.current < CHECK_EVERY) return;
     lastCheck.current = Date.now();
-    const list = (await scan()).filter((c) => c.target && c.newer && !declined.current.has(`${c.fileName}@${c.savedAt}`));
+    // Proposition automatique : seulement quand c'est certainement la même campagne
+    const list = (await scan()).filter((c) => c.target && c.sure && c.newer && !declined.current.has(`${c.fileName}@${c.savedAt}`));
     if (list.length) setFound((f) => f || list);
   }, [scan]);
 
@@ -161,7 +162,7 @@ export function useFolderBackup({ loaded, currentId, camp, campaigns, readCampai
           return n;
         };
         const adds = selected.filter((c) => c.mode !== "update");
-        if (adds.length) await addCampaigns(adds.map((c) => ({ name: unique(c.name), data: c.data })));
+        if (adds.length) await addCampaigns(adds.map((c) => ({ name: unique(c.name), data: c.sure ? withoutSync(c.data) : c.data })));
         for (const c of selected.filter((c) => c.mode === "update")) await replaceCampaign(c.target, c.data);
         if (selected.length) {
           // On retient la version importée de chaque fichier pour ne pas la reproposer
@@ -193,12 +194,28 @@ export function useFolderBackup({ loaded, currentId, camp, campaigns, readCampai
   const saveNow = useCallback(async () => {
     const { currentId: id, camp: data, campaigns: list } = latest.current;
     try {
+      if (!scannedRef.current) await scan(); // sinon notre écriture masquerait une version plus récente d'un autre appareil
       await write(id, list.find((c) => c.id === id)?.name, data);
       return { file: rec.current.files[id] };
     } catch (err) {
       return { error: fail(err) };
     }
-  }, [write]);
+  }, [write, scan]);
+
+  /** Campagne supprimée dans l'appli : son fichier quitte aussi le dossier (seulement s'il est à nous) */
+  const removeFile = useCallback(async (campaignId) => {
+    if (!rec.current || state.permission !== "granted") return;
+    try {
+      const files = await removeCampaignFile(rec.current.handle, rec.current.files, { installId: installId.current, campaignId });
+      rec.current = { ...rec.current, files };
+      await put(FOLDER_KEY, rec.current);
+      const rest = { ...own.current };
+      delete rest[campaignId];
+      own.current = rest;
+    } catch (err) {
+      fail(err);
+    }
+  }, [state.permission]);
 
   const forget = useCallback(async () => {
     rec.current = null;
@@ -227,5 +244,5 @@ export function useFolderBackup({ loaded, currentId, camp, campaigns, readCampai
     return () => document.removeEventListener("visibilitychange", onVisibility);
   }, [state.permission, write, checkUpdates, asking, scanned]);
 
-  return { supported: folderSupported, ...state, found, choose, reconnect, saveNow, forget, lookForBackups, finishImport };
+  return { supported: folderSupported, ...state, found, choose, reconnect, saveNow, removeFile, forget, lookForBackups, finishImport };
 }

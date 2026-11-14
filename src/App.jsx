@@ -1,7 +1,8 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { Users, Ghost, Skull, Swords, Crosshair, Download, Upload, AlertTriangle, Undo2, ScrollText, Map as MapIcon, MonitorPlay, X, Save } from "lucide-react";
 import { RACES, CLASSES, BACKGROUNDS } from "./data/reference.js";
-import { uid, withLog, PLAYER_CHANNEL, openPlayerScreen } from "./utils/helpers.js";
+import { uid, withLog, PLAYER_CHANNEL, openPlayerScreen, normalizeCampaign } from "./utils/helpers.js";
+import { matchCandidates, hasContent, withoutSync } from "./sync/folder.js";
 import { useCampaign } from "./hooks/useCampaign.js";
 import { RulesContext } from "./hooks/useRules.js";
 import { useFolderBackup } from "./hooks/useFolderBackup.js";
@@ -142,6 +143,40 @@ export default function App() {
   }, [saveNow, folder, campaigns, currentId]);
   const closeSaved = useCallback(() => setSaved(null), []);
 
+  /* Bouton « Importer » : si la campagne existe déjà ici (même identifiant, ou même nom),
+     on propose de la mettre à jour plutôt que d'en créer une copie */
+  const [fileImport, setFileImport] = useState(null); // [candidat] en attente de choix
+  const importFile = async (file) => {
+    let data;
+    try {
+      data = JSON.parse(await file.text());
+      normalizeCampaign(data);
+    } catch {
+      return alert("Ce fichier n'est pas une campagne de Table du Maître.");
+    }
+    const n = normalizeCampaign(data);
+    const locals = [];
+    for (const c of campaigns) {
+      const d = await readCampaign(c.id);
+      locals.push({ ...c, syncId: d?.settings?.syncId, empty: !hasContent(d) });
+    }
+    const [cand] = matchCandidates(
+      [{ fileName: file.name, file, name: String(data.name || file.name.replace(/\.json$/i, "")), data, savedAt: data.savedAt || file.lastModified, syncId: n.settings.syncId || null, counts: { entities: n.entities.length, combats: n.combats.length, sessions: n.sessions.length, world: n.world.length } }],
+      locals
+    );
+    if (!cand.target) return importCampaign(file).then(resetView);
+    setFileImport([{ ...cand, newer: true }]); // date de la version locale inconnue : pas d'avertissement
+  };
+  const finishFileImport = async ([c]) => {
+    setFileImport(null);
+    if (!c) return;
+    if (c.mode === "update") {
+      await replaceCampaign(c.target, c.data);
+      if (c.target !== currentId) await switchCampaign(c.target);
+    } else await importCampaign(c.file, c.sure ? withoutSync(c.data) : c.data);
+    resetView();
+  };
+
   /* Ctrl+S (⌘S) sauvegarde ; Ctrl+Z (⌘Z) annule, sauf dans un champ de saisie qui a sa propre annulation */
   useEffect(() => {
     const onKey = (ev) => {
@@ -191,8 +226,11 @@ export default function App() {
       return;
     } else if (v === "__delete") {
       if (campaigns.length < 2) return alert("C'est votre seule campagne : créez-en une autre avant de supprimer celle-ci.");
-      if (!confirm(`Supprimer définitivement la campagne « ${current?.name} » et tout son contenu ?\n\nExportez-la d'abord si vous voulez la garder.`)) return;
+      const inFolder = folder.permission === "granted" ? ` Son fichier dans le dossier « ${folder.name} » sera aussi supprimé.` : "";
+      if (!confirm(`Supprimer définitivement la campagne « ${current?.name} » et tout son contenu ?${inFolder}\n\nExportez-la d'abord si vous voulez la garder.`)) return;
+      const gone = currentId;
       await deleteCampaign();
+      await folder.removeFile(gone);
     } else {
       await switchCampaign(v);
     }
@@ -364,11 +402,11 @@ export default function App() {
               <input
                 ref={importRef}
                 type="file"
-                accept="application/json"
+                accept=".json,application/json"
                 className="hidden"
                 onChange={(ev) => {
                   const f = ev.target.files?.[0];
-                  if (f) importCampaign(f).then(resetView);
+                  if (f) importFile(f);
                   ev.target.value = "";
                 }}
               />
@@ -471,6 +509,7 @@ export default function App() {
       {saved && <SaveDialog result={saved} folder={folder} onExport={exportCampaign} onClose={closeSaved} />}
       {ask && <TextDialog {...ask} onClose={() => setAsk(null)} />}
       {folder.found && <FolderImportDialog found={folder.found} onDone={folder.finishImport} />}
+      {fileImport && !folder.found && <FolderImportDialog found={fileImport} onDone={finishFileImport} fromFile />}
     </div>
     </RulesContext.Provider>
   );

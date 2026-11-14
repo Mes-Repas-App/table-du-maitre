@@ -267,10 +267,10 @@ export function useCampaign() {
   const exportDue = loaded && hasContent && lastExport != null && Date.now() - lastExport > EXPORT_EVERY;
 
   const importCampaign = useCallback(
-    async (file) => {
-      let data;
+    async (file, parsed) => {
+      let data = parsed;
       try {
-        data = JSON.parse(await file.text());
+        data ??= JSON.parse(await file.text());
         normalizeCampaign(data); // valide avant de créer quoi que ce soit
       } catch {
         alert("Fichier de campagne invalide.");

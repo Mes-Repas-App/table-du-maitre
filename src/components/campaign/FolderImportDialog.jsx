@@ -8,10 +8,11 @@ import { inputStyle } from "../ui/form.jsx";
  * campagnes. Rien n'est perdu : une campagne mise à jour garde sa version précédente dans
  * les copies de secours, et les fichiers du dossier ne sont jamais modifiés.
  */
-export default function FolderImportDialog({ found, onDone }) {
-  // Par défaut : on met à jour avec les versions plus récentes et on importe les campagnes inconnues
+export default function FolderImportDialog({ found, onDone, fromFile }) {
+  // Par défaut : mise à jour avec une version plus récente de la même campagne ; si seul le nom
+  // correspond (peut-être une autre campagne), ajout en nouvelle campagne : rien n'est écrasé sans le choisir
   const [choice, setChoice] = useState(() =>
-    Object.fromEntries(found.map((c) => [c.fileName, { on: !c.target || c.newer, mode: c.target ? "update" : "new" }]))
+    Object.fromEntries(found.map((c) => [c.fileName, c.target && c.sure ? { on: c.newer, mode: "update" } : { on: true, mode: "new" }]))
   );
 
   useEffect(() => {
@@ -26,7 +27,7 @@ export default function FolderImportDialog({ found, onDone }) {
 
   const set = (fileName, patch) => setChoice((p) => ({ ...p, [fileName]: { ...p[fileName], ...patch } }));
   const selected = found.filter((c) => choice[c.fileName].on).map((c) => ({ ...c, mode: choice[c.fileName].mode }));
-  const onlyUpdates = found.length > 0 && found.every((c) => c.target && c.newer);
+  const onlyUpdates = !fromFile && found.length > 0 && found.every((c) => c.target && c.sure && c.newer);
   const date = (t) => new Date(t).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" });
   const detail = ({ entities, combats, sessions, world }) =>
     [entities && `${entities} fiche${entities > 1 ? "s" : ""}`, combats && `${combats} combat${combats > 1 ? "s" : ""}`, sessions && `${sessions} session${sessions > 1 ? "s" : ""}`, world && `${world} élément${world > 1 ? "s" : ""} du monde`]
@@ -40,7 +41,7 @@ export default function FolderImportDialog({ found, onDone }) {
         <div className="flex items-center gap-2 p-3" style={{ borderBottom: "1px solid var(--edge)" }}>
           {onlyUpdates ? <RefreshCw size={16} style={{ color: "var(--gold)" }} /> : <FolderInput size={16} style={{ color: "var(--gold)" }} />}
           <span id="folder-import-title" className="flex-1" style={{ fontFamily: "var(--display)", color: "var(--parchment)" }}>
-            {onlyUpdates ? "Version plus récente sur un autre appareil" : "Sauvegardes trouvées"}
+            {fromFile ? "Importer une campagne" : onlyUpdates ? "Version plus récente sur un autre appareil" : "Sauvegardes trouvées"}
           </span>
           <button onClick={() => onDone([])} className="p-1.5 rounded-md" style={inputStyle} title="Ne rien changer (Échap)" aria-label="Ne rien changer">
             <X size={14} />
@@ -54,9 +55,11 @@ export default function FolderImportDialog({ found, onDone }) {
           ) : (
             <>
               <p className="text-xs" style={{ color: "var(--muted)" }}>
-                {onlyUpdates
-                  ? "Un autre appareil a enregistré une version plus récente de votre campagne dans le dossier de sauvegarde. La mettre à jour ici ?"
-                  : "Ce dossier contient des campagnes enregistrées ailleurs. Choisissez pour chacune : mettre à jour la même campagne ici, ou l'ajouter comme nouvelle campagne."}{" "}
+                {fromFile
+                  ? "Cette campagne existe déjà ici. La mettre à jour avec le contenu du fichier, ou l'ajouter comme nouvelle campagne ?"
+                  : onlyUpdates
+                    ? "Un autre appareil a enregistré une version plus récente de votre campagne dans le dossier de sauvegarde. La mettre à jour ici ?"
+                    : "Ce dossier contient des campagnes enregistrées ailleurs. Choisissez pour chacune : mettre à jour la même campagne ici, ou l'ajouter comme nouvelle campagne."}{" "}
                 La version remplacée reste disponible dans les <b>copies de secours</b> (et Ctrl+Z annule la mise à jour de la campagne ouverte).
               </p>
               <div className="space-y-1 max-h-72 overflow-y-auto">
@@ -80,6 +83,11 @@ export default function FolderImportDialog({ found, onDone }) {
                         ) : (
                           <span className="block text-[11px]" style={{ color: "var(--arcane)" }}>
                             Nouvelle campagne
+                          </span>
+                        )}
+                        {c.target && !c.sure && mode === "update" && (
+                          <span className="block text-[11px]" style={{ color: "var(--blood-l)" }}>
+                            Seul le nom est identique : vérifiez qu'il s'agit bien de la même campagne avant de remplacer « {c.targetName} ».
                           </span>
                         )}
                         {c.target && !c.newer && mode === "update" && (
