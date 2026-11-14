@@ -66,7 +66,7 @@ Le résultat se trouve dans `dist/`.
 - **Règles 2024 par défaut** (Manuel des joueurs 2024) ; une campagne peut passer aux règles 2014 depuis ce même menu. Cela change les textes des états, l'épuisement, le JS de concentration, les dés de vie au repos long et le bestiaire.
 - **Annuler** (bouton ↶ ou Ctrl+Z) : revient sur les 50 dernières modifications ; les gestes rapprochés (glisser un pion, taper un nom) comptent pour une seule étape.
 - Sauvegarde automatique dans le navigateur (IndexedDB : plusieurs centaines de Mo, cartes et portraits compris). Une ancienne sauvegarde est reprise automatiquement. En cas d'échec, un bandeau rouge propose d'exporter.
-- Bouton **Sauvegarder** (ou Ctrl+S) : enregistre tout de suite, dans le navigateur et dans le dossier de sauvegarde s'il y en a un ; une fenêtre confirme où la campagne a été enregistrée.
+- Bouton **Sauvegarder** (ou Ctrl+S) : enregistre tout de suite, dans le navigateur et en écrasant le fichier de la campagne dans le dossier de sauvegarde s'il y en a un (puis le relit pour vérifier) ; bouton **Rafraîchir** pour recharger la campagne depuis ce fichier.
 - Export / import en fichier JSON (boutons dans l'en-tête) pour changer de machine ou faire des sauvegardes. Un fichier importé devient une **nouvelle campagne** (rien n'est écrasé) ; les anciens fichiers sont acceptés.
 - **Copies de secours automatiques** : au plus une par heure, les 10 dernières gardées par campagne (menu de campagne → « Copies de secours… »). Un bandeau rappelle d'exporter si le dernier export date de plus d'une semaine (sauf si un dossier de sauvegarde est actif).
 - **Dossier de sauvegarde** (bouton dossier dans l'en-tête) : vos campagnes enregistrées en fichiers dans le dossier de votre choix. Voir ci-dessous.
@@ -77,14 +77,14 @@ Le résultat se trouve dans `dist/`.
 
 ## Dossier de sauvegarde
 
-Bouton **dossier** dans l'en-tête → **Choisir un dossier…** : chaque campagne y est enregistrée dans son propre fichier JSON (nommé d'après la campagne), mis à jour 2 secondes après chaque modification. Ces fichiers s'importent aussi avec le bouton **Importer**.
+Bouton **dossier** dans l'en-tête → **Choisir un dossier…** : chaque campagne y a **un fichier à son nom** (« Ma campagne.json »), qui sert de référence entre vos appareils. Il est **écrasé** à chaque enregistrement : 2 secondes après chaque modification, et avec le bouton **Sauvegarder**.
 
-- **Rien n'est jamais écrasé** : l'appli n'écrit que dans ses propres fichiers (reconnus par un identifiant propre à ce navigateur). Un fichier d'un autre appareil, ou un export manuel, est seulement lu.
-- **Si le dossier contient déjà des sauvegardes** au moment où vous le choisissez, l'appli les liste. Pour une campagne qui existe déjà ici, vous choisissez entre **la mettre à jour** et l'ajouter comme nouvelle campagne ; les autres deviennent de **nouvelles campagnes** (suffixe « (importée) » si le nom existe déjà). Vous pouvez aussi ne rien importer.
-- **Plusieurs appareils** (ordinateur et téléphone sur le même dossier Drive, par exemple) : chaque campagne porte un identifiant commun qui la suit d'un appareil à l'autre. À l'ouverture de l'appli et au retour sur l'onglet, si un autre appareil a enregistré une version **plus récente** d'une de vos campagnes, l'appli propose de la **mettre à jour**. La version remplacée part dans les copies de secours, et Ctrl+Z annule la mise à jour de la campagne ouverte. Une campagne qui porte seulement le même nom (deux « Ma campagne » différentes, par exemple) n'est jamais remplacée d'office : elle est proposée en nouvelle campagne, avec la mise à jour en option.
+- **Rafraîchir** (bouton de l'en-tête, visible quand un dossier est choisi) : recharge la campagne ouverte depuis son fichier. La version d'avant part dans les copies de secours, et Ctrl+Z l'annule.
+- **Plusieurs appareils** (ordinateur et téléphone sur le même dossier Drive, par exemple) : si un autre appareil a enregistré le fichier depuis votre dernière lecture, l'appli **ne l'écrase pas en silence**. Un bandeau propose **Rafraîchir** (charger sa version) ou **Écraser avec ma version**. Tant que vous n'avez pas choisi, vos modifications restent enregistrées dans le navigateur mais ne sont plus écrites dans le dossier. La vérification a lieu à l'ouverture, au changement de campagne et au retour sur l'onglet.
+- **Au choix du dossier** : pour une campagne qui y a déjà un fichier différent, vous choisissez entre charger la version du dossier et garder celle de cet appareil. Les autres campagnes du dossier peuvent être importées.
+- **Renommer une campagne** renomme son fichier. **La supprimer** supprime aussi son fichier.
+- Les anciennes copies d'avant cette version (« Ma campagne (2).json »…) ne sont plus utilisées : vous pouvez les supprimer du dossier.
 - **Importer** (fichier JSON) : si la campagne existe déjà ici, l'appli propose de la mettre à jour au lieu d'en créer une copie.
-- **Supprimer une campagne** retire aussi son fichier du dossier (jamais ceux des autres appareils).
-- **Chercher des sauvegardes à importer** (même menu) relance cette recherche à tout moment, par exemple après avoir copié dans le dossier une sauvegarde d'un autre appareil. Une sauvegarde déjà importée n'est reproposée que si le fichier a changé depuis.
 - Astuce : choisissez un dossier synchronisé (Google Drive pour ordinateur : « Mon Drive » sur le lecteur G:, OneDrive, Dropbox…) pour avoir aussi une copie en ligne.
 - **Navigateurs** : possible avec **Chrome** ou **Edge** (et Chrome sur Android). Firefox et Safari ne permettent pas de choisir un dossier : utilisez alors **Exporter** / **Importer**.
 - Après un redémarrage du navigateur, celui-ci peut redemander l'autorisation d'accès au dossier : un bandeau propose **Autoriser**, en un clic.

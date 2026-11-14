@@ -55,7 +55,7 @@ export default function FolderButton({ folder }) {
           ) : permission === "none" ? (
             <>
               <p>
-                Choisissez un dossier : chaque campagne y sera enregistrée dans son propre fichier, mis à jour automatiquement. Astuce : un dossier synchronisé (Google Drive pour ordinateur, OneDrive, Dropbox…) garde aussi une copie en ligne.
+                Choisissez un dossier : chaque campagne y est enregistrée dans un fichier à son nom (« Ma campagne.json »), écrasé à chaque enregistrement. Le bouton Rafraîchir la recharge depuis ce fichier. Astuce : un dossier synchronisé (Google Drive pour ordinateur, OneDrive, Dropbox…) garde aussi une copie en ligne.
               </p>
               <p>S'il contient déjà des sauvegardes, l'appli vous proposera de les importer, sans rien écraser.</p>
               <button onClick={run(folder.choose)} className="w-full rounded-md px-3 py-2 text-sm font-semibold" style={{ background: "var(--gold)", color: "#1a1409" }}>
@@ -83,7 +83,7 @@ export default function FolderButton({ folder }) {
               <div className="flex flex-wrap gap-1.5">
                 {permission === "granted" && (
                   <button onClick={run(folder.lookForBackups)} className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-md px-2 py-1.5" style={inputStyle}>
-                    <Search size={12} /> Chercher des sauvegardes à importer
+                    <Search size={12} /> Importer les autres campagnes du dossier
                   </button>
                 )}
                 <button onClick={run(folder.choose)} className="inline-flex items-center justify-center gap-1.5 rounded-md px-2 py-1.5" style={inputStyle}>
@@ -93,7 +93,7 @@ export default function FolderButton({ folder }) {
                   <LogOut size={12} />
                 </button>
               </div>
-              <p className="text-[10px]">L'appli n'écrit que dans ses propres fichiers. Les sauvegardes des autres appareils sont seulement lues : une version plus récente d'une de vos campagnes vous est proposée en mise à jour (à l'ouverture et au retour sur l'appli).</p>
+              <p className="text-[10px]">Un fichier par campagne, à son nom, partagé entre vos appareils. Si un autre appareil l'a modifié depuis votre dernière lecture, l'appli ne l'écrase pas sans vous demander : un bandeau propose de rafraîchir ou d'écraser.</p>
             </>
           )}
         </div>

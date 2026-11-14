@@ -1,32 +1,25 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { get, put, del } from "./db.js";
-import { uid } from "../utils/helpers.js";
-import { folderSupported, saveCampaignFile, removeCampaignFile, scanFolder, fingerprint, matchCandidates, hasContent, withoutSync } from "../sync/folder.js";
+import { folderSupported, fileNameFor, fileSavedAt, readCampaignFile, writeCampaignFile, removeFile as removeFolderFile, changedElsewhere, listCampaignFiles, fingerprint, hasContent } from "../sync/folder.js";
 
-const FOLDER_KEY = "__folder"; // { handle, files: { campaignId: nomDeFichier }, imported: { nomDeFichier: savedAt } }
-const INSTALL_KEY = "__install"; // identifiant de ce navigateur, écrit dans nos fichiers
-const CHECK_EVERY = 30 * 1000; // vérification des autres appareils au plus toutes les 30 s (retour sur l'onglet)
+const FOLDER_KEY = "__folder"; // { handle, sync: { campaignId: { fileName, savedAt, print } } }
+const CHECK_EVERY = 30 * 1000; // vérification du dossier au plus toutes les 30 s (retour sur l'onglet)
 
 /**
- * Dossier de sauvegarde choisi par l'utilisateur : la campagne ouverte y est écrite
- * 2 s après chaque modification (et quand l'onglet est masqué). Au choix du dossier,
- * les sauvegardes déjà présentes sont proposées à l'import. Une version plus récente d'une
- * campagne déjà présente ici (venue d'un autre appareil) est proposée en mise à jour, à
- * l'ouverture de l'appli et au retour sur l'onglet.
- * Après un redémarrage du navigateur, celui-ci peut redemander l'autorisation d'accès.
+ * Dossier de sauvegarde choisi par l'utilisateur. Chaque campagne y a un fichier à son nom,
+ * partagé entre appareils : la campagne ouverte y est écrite (en écrasant) 2 s après chaque
+ * modification, et avec le bouton « Sauvegarder » ; « Rafraîchir » la recharge depuis ce fichier.
+ *
+ * Sécurité : si le fichier a été enregistré par un autre appareil depuis notre dernière lecture,
+ * on ne l'écrase pas en silence. L'appli le signale (`remote`) et propose de rafraîchir, ou
+ * d'écraser avec la version d'ici. Après un redémarrage, le navigateur peut redemander l'accès.
  */
 export function useFolderBackup({ loaded, currentId, camp, campaigns, readCampaign, addCampaigns, replaceCampaign }) {
-  const [state, setState] = useState({ name: "", permission: "none", lastWrite: null, error: null }); // permission : none | prompt | granted
-  const [found, setFound] = useState(null); // sauvegardes trouvées, à proposer à l'import
-  // Dossier parcouru au moins une fois : avant, une écriture rajeunirait notre fichier et masquerait
-  // une version plus récente venue d'un autre appareil
-  const [scanned, setScanned] = useState(false);
+  // permission : none | prompt | granted ; remote : { campaignId, fileName, savedAt } modifié ailleurs
+  const [state, setState] = useState({ name: "", permission: "none", lastWrite: null, error: null, remote: null });
+  const [found, setFound] = useState(null); // au choix du dossier : fichiers à charger ou importer
   const rec = useRef(null);
-  const installId = useRef(null);
-  const cache = useRef(new Map()); // fichiers déjà lus et inchangés : pas relus à chaque vérification
-  const scannedRef = useRef(false);
-  const own = useRef({}); // campagne → { savedAt, print } de notre dernière écriture
-  const declined = useRef(new Set()); // mises à jour refusées pendant cette visite (fichier@date)
+  const cache = useRef(new Map()); // fichiers déjà lus et inchangés : pas relus
   const lastCheck = useRef(0);
   const latest = useRef({});
   latest.current = { currentId, camp, campaigns, readCampaign };
@@ -44,44 +37,49 @@ export function useFolderBackup({ loaded, currentId, camp, campaigns, readCampai
     return denied ? "Le navigateur demande de ré-autoriser l'accès au dossier." : message;
   };
 
-  /* Parcourt le dossier : empreintes (pour ne pas recopier), nos dernières écritures, et propositions
-     d'import, chacune reliée à la campagne locale correspondante s'il y en a une */
-  const scan = useCallback(async () => {
-    const { campaigns, readCampaign } = latest.current;
-    const localPrints = new Set();
-    const locals = [];
-    for (const c of campaigns) {
-      const d = await readCampaign(c.id);
-      if (!d) continue;
-      localPrints.add(fingerprint(d));
-      locals.push({ ...c, syncId: d.settings?.syncId, empty: !hasContent(d) });
-    }
-    const res = await scanFolder(rec.current.handle, { installId: installId.current, localPrints, imported: rec.current.imported || {}, cache: cache.current });
-    own.current = res.own;
-    scannedRef.current = true;
-    setScanned(true);
-    return matchCandidates(res.candidates, locals, res.own);
-  }, []);
+  const nameOf = (id) => latest.current.campaigns.find((c) => c.id === id)?.name;
 
+  /** Mémorise la version du fichier que cet appareil a lue ou écrite en dernier */
+  const remember = async (campaignId, entry) => {
+    rec.current = { ...rec.current, sync: { ...rec.current.sync, [campaignId]: entry } };
+    await put(FOLDER_KEY, rec.current);
+  };
+  const clearRemote = (campaignId) => setState((s) => (s.remote?.campaignId === campaignId ? { ...s, remote: null } : s));
+
+  /**
+   * Écrit une campagne dans son fichier (en l'écrasant).
+   * → { file, savedAt } | { empty } | { same } (rien à écrire) | { conflict: { fileName, savedAt } }
+   * `force` : écrase même si le fichier a été modifié ailleurs (choix explicite de l'utilisateur).
+   */
   const write = useCallback(async (campaignId, name, data, { force = false } = {}) => {
-    if (!rec.current) return;
+    if (!rec.current) return {};
+    if (!hasContent(data)) return { empty: true };
+    const dir = rec.current.handle;
+    const fileName = fileNameFor(name);
+    const known = rec.current.sync?.[campaignId];
     const print = fingerprint(data);
-    // Écriture automatique d'un contenu identique à notre dernier fichier : inutile (sa date reste celle de
-    // la vraie dernière modification). Le bouton « Sauvegarder » (force) écrit toujours.
-    const last = own.current[campaignId];
-    if (!force && last?.print === print && last.name === name) return;
-    const files = await saveCampaignFile(rec.current.handle, rec.current.files, {
-      installId: installId.current,
-      campaignId,
-      name,
-      data,
-    });
-    if (hasContent(data)) own.current = { ...own.current, [campaignId]: { savedAt: Date.now(), print, name } };
-    if (files !== rec.current.files) {
-      rec.current = { ...rec.current, files };
-      await put(FOLDER_KEY, rec.current);
+    if (!force) {
+      const savedAt = await fileSavedAt(dir, fileName);
+      if (changedElsewhere(savedAt, known, fileName)) {
+        // Même contenu que le fichier : simplement à jour
+        const remote = await readCampaignFile(dir, fileName);
+        if (remote?.print === print) {
+          await remember(campaignId, { fileName, savedAt: remote.savedAt, print });
+          clearRemote(campaignId);
+          return { same: true, file: fileName, savedAt: remote.savedAt };
+        }
+        setState((s) => ({ ...s, remote: { campaignId, fileName, savedAt } }));
+        return { conflict: { fileName, savedAt } };
+      }
+      if (known?.fileName === fileName && known.print === print) return { same: true, file: fileName, savedAt: known.savedAt };
     }
+    const savedAt = await writeCampaignFile(dir, fileName, { name, data });
+    // Campagne renommée : l'ancien fichier part (le nouveau nom fait référence)
+    if (known?.fileName && known.fileName !== fileName) await removeFolderFile(dir, known.fileName);
+    await remember(campaignId, { fileName, savedAt, print });
+    clearRemote(campaignId);
     setState((s) => ({ ...s, lastWrite: Date.now(), error: null }));
+    return { file: fileName, savedAt };
   }, []);
 
   /** Écrit toutes les campagnes (après le choix du dossier) */
@@ -93,91 +91,126 @@ export function useFolderBackup({ loaded, currentId, camp, campaigns, readCampai
     }
   }, [write]);
 
-  /** Un autre appareil a-t-il enregistré une version plus récente d'une de nos campagnes ? */
-  const checkUpdates = useCallback(async () => {
-    if (!rec.current || Date.now() - lastCheck.current < CHECK_EVERY) return;
+  /** Le fichier de la campagne ouverte a-t-il été modifié sur un autre appareil ? */
+  const checkRemote = useCallback(async ({ throttle = true } = {}) => {
+    if (!rec.current || (throttle && Date.now() - lastCheck.current < CHECK_EVERY)) return;
     lastCheck.current = Date.now();
-    // Proposition automatique : seulement quand c'est certainement la même campagne
-    const list = (await scan()).filter((c) => c.target && c.sure && c.newer && !declined.current.has(`${c.fileName}@${c.savedAt}`));
-    if (list.length) setFound((f) => f || list);
-  }, [scan]);
+    const { currentId: id, camp: data } = latest.current;
+    const fileName = fileNameFor(nameOf(id));
+    const known = rec.current.sync?.[id];
+    const savedAt = await fileSavedAt(rec.current.handle, fileName);
+    if (!changedElsewhere(savedAt, known, fileName)) return clearRemote(id);
+    const remote = await readCampaignFile(rec.current.handle, fileName);
+    if (!remote) return;
+    if (remote.print === fingerprint(data)) {
+      await remember(id, { fileName, savedAt: remote.savedAt, print: remote.print });
+      return clearRemote(id);
+    }
+    setState((s) => ({ ...s, remote: { campaignId: id, fileName, savedAt: remote.savedAt } }));
+  }, []);
 
   /* Au démarrage : dossier déjà choisi ? autorisation encore valable ? */
   useEffect(() => {
     if (!folderSupported) return;
     (async () => {
-      installId.current = (await get(INSTALL_KEY)) || uid() + uid();
-      await put(INSTALL_KEY, installId.current);
       const r = await get(FOLDER_KEY);
       if (!r?.handle) return;
-      rec.current = r;
+      rec.current = { handle: r.handle, sync: r.sync || {} }; // (les anciennes versions avaient files/imported)
       const permission = (await r.handle.queryPermission({ mode: "readwrite" })) === "granted" ? "granted" : "prompt";
       setState((s) => ({ ...s, name: r.handle.name, permission }));
     })().catch(fail);
   }, []);
 
-  /* Campagnes chargées et dossier accessible : on regarde ce que les autres appareils ont enregistré */
+  /* Dossier accessible, ou autre campagne ouverte : on regarde si son fichier a changé ailleurs */
   useEffect(() => {
-    if (loaded && state.permission === "granted") checkUpdates().catch(fail);
-  }, [loaded, state.permission, checkUpdates]);
+    if (loaded && state.permission === "granted" && currentId) checkRemote({ throttle: false }).catch(fail);
+  }, [loaded, state.permission, currentId, checkRemote]);
 
-  /** Choisir (ou changer) le dossier : propose d'importer ce qu'il contient déjà */
+  /**
+   * Choisir (ou changer) le dossier. Les fichiers qui portent le nom d'une campagne d'ici sont
+   * proposés au chargement ; les autres, à l'import en nouvelles campagnes.
+   */
   const choose = useCallback(async () => {
     try {
       const handle = await window.showDirectoryPicker({ id: "table-du-maitre", mode: "readwrite" });
-      rec.current = { handle, files: {} };
+      rec.current = { handle, sync: {} };
       await put(FOLDER_KEY, rec.current);
-      lastCheck.current = Date.now(); // la recherche complète ci-dessous tient lieu de vérification
-      setState({ name: handle.name, permission: "granted", lastWrite: null, error: null });
-      const candidates = await scan();
+      cache.current = new Map();
+      lastCheck.current = Date.now();
+      setState({ name: handle.name, permission: "granted", lastWrite: null, error: null, remote: null });
+      const candidates = await candidatesIn(handle, { all: true });
       if (candidates.length) setFound(candidates);
       else await writeAll();
     } catch (err) {
       if (err?.name !== "AbortError") fail(err); // AbortError : fenêtre fermée sans choisir
     }
-  }, [scan, writeAll]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [writeAll]);
 
-  /** Rechercher à nouveau des sauvegardes à importer (ex. venues d'un autre appareil) */
+  /** Fichiers du dossier à proposer : campagnes inconnues ici (et, au choix du dossier, celles qui diffèrent) */
+  const candidatesIn = async (dir, { all }) => {
+    const { campaigns, readCampaign } = latest.current;
+    // Un fichier par nom de campagne : « <nom>.json » fait référence. Les anciennes copies
+    // (« Ma campagne (2).json »…) ne servent que s'il n'existe pas de fichier à ce nom.
+    const byName = new Map();
+    for (const f of await listCampaignFiles(dir, cache.current)) {
+      const ref = fileNameFor(f.name);
+      const cur = byName.get(ref);
+      if (!cur || (f.fileName === ref && cur.fileName !== ref)) byName.set(ref, { ...f, ref });
+    }
+    const out = [];
+    for (const f of byName.values()) {
+      const local = campaigns.find((c) => fileNameFor(c.name) === f.ref);
+      if (!local) {
+        out.push(f); // nouvelle campagne
+        continue;
+      }
+      if (!all) continue;
+      const d = await readCampaign(local.id);
+      if (d && fingerprint(d) === f.print) {
+        if (f.fileName === f.ref) await remember(local.id, { fileName: f.ref, savedAt: f.savedAt, print: f.print });
+      } else out.push({ ...f, target: local.id, targetName: local.name, empty: !hasContent(d), byName: true });
+    }
+    return out;
+  };
+
+  /** Importer les autres campagnes du dossier (celles qui n'existent pas ici) */
   const lookForBackups = useCallback(async () => {
     try {
-      const candidates = await scan();
-      setFound(candidates);
+      setFound(await candidatesIn(rec.current.handle, { all: false }));
     } catch (err) {
       fail(err);
     }
-  }, [scan]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  /** Fin de la fenêtre : nouvelles campagnes et mises à jour choisies, puis on écrit nos campagnes */
+  /** Fin de la fenêtre : chargements et imports choisis, puis on écrit les campagnes d'ici */
   const finishImport = useCallback(
     async (selected) => {
-      // Ce qui n'a pas été retenu n'est plus proposé automatiquement pendant cette visite
-      (found || []).forEach((c) => !selected.some((s) => s.fileName === c.fileName) && declined.current.add(`${c.fileName}@${c.savedAt}`));
       setFound(null);
       try {
-        // Nom déjà pris dans l'appli : « (importée) » pour les distinguer dans le menu
-        const taken = new Set(latest.current.campaigns.map((c) => c.name));
-        const unique = (name) => {
-          let n = taken.has(name) ? `${name} (importée)` : name;
-          for (let i = 2; taken.has(n); i++) n = `${name} (importée ${i})`;
-          taken.add(n);
-          return n;
-        };
-        const adds = selected.filter((c) => c.mode !== "update");
-        if (adds.length) await addCampaigns(adds.map((c) => ({ name: unique(c.name), data: c.sure ? withoutSync(c.data) : c.data })));
+        const adds = selected.filter((c) => c.mode === "new");
+        if (adds.length) {
+          const added = await addCampaigns(adds.map((c) => ({ name: c.name, data: c.data })));
+          for (const [i, a] of added.entries()) if (adds[i].fileName === adds[i].ref) await remember(a.id, { fileName: adds[i].ref, savedAt: adds[i].savedAt, print: adds[i].print });
+        }
         for (const c of selected.filter((c) => c.mode === "update")) await replaceCampaign(c.target, c.data);
-        if (selected.length) {
-          // On retient la version importée de chaque fichier pour ne pas la reproposer
-          const imported = { ...(rec.current.imported || {}) };
-          selected.forEach((c) => (imported[c.fileName] = c.savedAt));
-          rec.current = { ...rec.current, imported };
-          await put(FOLDER_KEY, rec.current);
+        // Chargées ou gardées telles quelles : le fichier de référence est désormais connu ici (une
+        // version gardée l'écrasera donc normalement, puisque c'est le choix qui vient d'être fait)
+        // (Annuler ne retient rien : le fichier restera signalé comme « modifié ailleurs », sans être écrasé)
+        for (const c of selected.filter((c) => c.target)) {
+          const savedAt = await fileSavedAt(rec.current.handle, c.ref);
+          if (savedAt != null) await remember(c.target, { fileName: c.ref, savedAt, print: c.mode === "update" && c.fileName === c.ref ? c.print : "" });
         }
         await writeAll();
+        // La vérification lancée pendant que la fenêtre était ouverte ne tenait pas compte de ces choix
+        setState((s) => ({ ...s, remote: null }));
+        await checkRemote({ throttle: false });
       } catch (err) {
         fail(err);
       }
     },
-    [found, addCampaigns, replaceCampaign, writeAll]
+    [found, addCampaigns, replaceCampaign, writeAll, checkRemote]
   );
 
   /** Ré-autoriser l'accès (le navigateur l'exige parfois après un redémarrage) */
@@ -185,72 +218,97 @@ export function useFolderBackup({ loaded, currentId, camp, campaigns, readCampai
     try {
       const ok = (await rec.current.handle.requestPermission({ mode: "readwrite" })) === "granted";
       setState((s) => ({ ...s, permission: ok ? "granted" : "prompt", error: null }));
-      // La vérification des autres appareils suit (effet ci-dessus), avant toute écriture
     } catch (err) {
       fail(err);
     }
   }, []);
 
-  /** Bouton « Sauvegarder » : écrit la campagne ouverte tout de suite → { file } ou { error } */
-  const saveNow = useCallback(async () => {
-    const { currentId: id, camp: data, campaigns: list } = latest.current;
+  /**
+   * Bouton « Sauvegarder » : écrase le fichier de la campagne ouverte, puis le relit pour vérifier.
+   * → { file, savedAt } | { empty } | { conflict } | { error }. `force` : écraser malgré une version d'ailleurs.
+   */
+  const saveNow = useCallback(
+    async ({ force = false } = {}) => {
+      const { currentId: id, camp: data } = latest.current;
+      try {
+        const before = Date.now();
+        const r = await write(id, nameOf(id), data, { force });
+        if (r.empty || r.conflict) return r;
+        const written = r.same ? await write(id, nameOf(id), data, { force: true }) : r; // inchangé : réécrit quand même
+        const savedAt = await fileSavedAt(rec.current.handle, written.file);
+        if (!(savedAt >= before)) return { error: `le fichier « ${written.file} » n'a pas été mis à jour.` };
+        return { file: written.file, savedAt };
+      } catch (err) {
+        return { error: fail(err) };
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [write]
+  );
+
+  /** Bouton « Rafraîchir » : recharge la campagne ouverte depuis son fichier du dossier */
+  const refresh = useCallback(async () => {
+    const { currentId: id, camp: data } = latest.current;
     try {
-      if (!scannedRef.current) await scan(); // sinon notre écriture masquerait une version plus récente d'un autre appareil
-      if (!hasContent(data)) return { empty: true };
-      const before = Date.now();
-      await write(id, list.find((c) => c.id === id)?.name, data, { force: true });
-      // Preuve : on relit le fichier dans le dossier et on vérifie que c'est bien la version qu'on vient d'écrire
-      const file = rec.current.files[id];
-      const head = await (await (await rec.current.handle.getFileHandle(file)).getFile()).slice(0, 400).text();
-      const savedAt = Number(head.match(/"savedAt":(\d+)/)?.[1]);
-      if (!head.includes(`"campaignId":"${id}"`) || !(savedAt >= before)) return { error: `le fichier « ${file} » n'a pas été mis à jour.` };
-      return { file, savedAt };
+      const fileName = fileNameFor(nameOf(id));
+      const remote = await readCampaignFile(rec.current.handle, fileName);
+      if (!remote) return { missing: fileName };
+      await remember(id, { fileName, savedAt: remote.savedAt, print: remote.print });
+      clearRemote(id);
+      if (remote.print === fingerprint(data)) return { same: true, file: fileName, savedAt: remote.savedAt };
+      await replaceCampaign(id, remote.data);
+      return { loaded: true, file: fileName, savedAt: remote.savedAt };
     } catch (err) {
       return { error: fail(err) };
     }
-  }, [write, scan]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [replaceCampaign]);
 
-  /** Campagne supprimée dans l'appli : son fichier quitte aussi le dossier (seulement s'il est à nous) */
-  const removeFile = useCallback(async (campaignId) => {
-    if (!rec.current || state.permission !== "granted") return;
-    try {
-      const files = await removeCampaignFile(rec.current.handle, rec.current.files, { installId: installId.current, campaignId });
-      rec.current = { ...rec.current, files };
-      await put(FOLDER_KEY, rec.current);
-      const rest = { ...own.current };
-      delete rest[campaignId];
-      own.current = rest;
-    } catch (err) {
-      fail(err);
-    }
-  }, [state.permission]);
+  /** Campagne supprimée dans l'appli : son fichier quitte aussi le dossier */
+  const removeFile = useCallback(
+    async (campaignId, name) => {
+      if (!rec.current || state.permission !== "granted") return;
+      try {
+        await removeFolderFile(rec.current.handle, rec.current.sync?.[campaignId]?.fileName || fileNameFor(name));
+        const sync = { ...rec.current.sync };
+        delete sync[campaignId];
+        rec.current = { ...rec.current, sync };
+        await put(FOLDER_KEY, rec.current);
+      } catch (err) {
+        fail(err);
+      }
+    },
+    [state.permission]
+  );
 
   const forget = useCallback(async () => {
     rec.current = null;
     await del(FOLDER_KEY);
-    setState({ name: "", permission: "none", lastWrite: null, error: null });
+    setState({ name: "", permission: "none", lastWrite: null, error: null, remote: null });
   }, []);
 
-  /* Écriture de la campagne ouverte, 2 s après la dernière modification (pas pendant une proposition de mise à jour) */
+  /* Écriture automatique de la campagne ouverte, 2 s après la dernière modification
+     (jamais pendant la fenêtre de choix, ni par-dessus une version enregistrée ailleurs) */
   const currentName = campaigns.find((c) => c.id === currentId)?.name;
-  const asking = !!found;
+  const blocked = !!found || state.remote?.campaignId === currentId;
   useEffect(() => {
-    if (!loaded || state.permission !== "granted" || !currentId || asking || !scanned) return;
+    if (!loaded || state.permission !== "granted" || !currentId || blocked) return;
     const t = setTimeout(() => write(currentId, currentName, camp).catch(fail), 2000);
     return () => clearTimeout(t);
-  }, [camp, currentId, currentName, loaded, state.permission, write, asking, scanned]);
+  }, [camp, currentId, currentName, loaded, state.permission, write, blocked]);
 
-  /* Onglet masqué : écriture immédiate ; retour sur l'onglet : versions des autres appareils */
+  /* Onglet masqué : écriture immédiate ; retour sur l'onglet : le fichier a-t-il changé ailleurs ? */
   useEffect(() => {
     const onVisibility = () => {
       if (state.permission !== "granted") return;
-      if (document.visibilityState === "visible") return checkUpdates().catch(fail);
-      const { currentId: id, camp: data, campaigns: list } = latest.current;
-      if (id && !asking && scanned) write(id, list.find((c) => c.id === id)?.name, data).catch(fail);
+      if (document.visibilityState === "visible") return checkRemote().catch(fail);
+      const { currentId: id, camp: data } = latest.current;
+      if (id && !blocked) write(id, nameOf(id), data).catch(fail);
     };
     document.addEventListener("visibilitychange", onVisibility);
     return () => document.removeEventListener("visibilitychange", onVisibility);
-  }, [state.permission, write, checkUpdates, asking, scanned]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.permission, write, checkRemote, blocked]);
 
-  return { supported: folderSupported, ...state, found, choose, reconnect, saveNow, removeFile, forget, lookForBackups, finishImport };
+  return { supported: folderSupported, ...state, found, choose, reconnect, saveNow, refresh, removeFile, forget, lookForBackups, finishImport };
 }

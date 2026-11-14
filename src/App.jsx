@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from "react";
-import { Users, Ghost, Skull, Swords, Crosshair, Download, Upload, AlertTriangle, Undo2, ScrollText, Map as MapIcon, MonitorPlay, X, Save } from "lucide-react";
+import { Users, Ghost, Skull, Swords, Crosshair, Download, Upload, AlertTriangle, Undo2, ScrollText, Map as MapIcon, MonitorPlay, X, Save, RefreshCw } from "lucide-react";
 import { RACES, CLASSES, BACKGROUNDS } from "./data/reference.js";
 import { uid, withLog, PLAYER_CHANNEL, openPlayerScreen, normalizeCampaign } from "./utils/helpers.js";
 import { matchCandidates, hasContent, withoutSync } from "./sync/folder.js";
@@ -124,7 +124,8 @@ export default function App() {
   }, []);
 
   /* Bouton « Sauvegarder » : navigateur, puis dossier choisi ; la popin dit où c'est enregistré */
-  const saveAll = useCallback(async () => {
+  const saveAll = useCallback(async (opts) => {
+    const force = opts?.force === true; // « Écraser avec ma version » après un avertissement
     try {
       await saveNow();
     } catch (err) {
@@ -132,8 +133,15 @@ export default function App() {
     }
     const lines = [`« ${campaigns.find((c) => c.id === currentId)?.name} » est enregistrée dans ce navigateur.`];
     if (folder.permission === "granted") {
-      const r = await folder.saveNow();
+      const r = await folder.saveNow({ force });
       if (r.error) return setSaved({ ok: false, lines: [...lines, `Dossier « ${folder.name} » : ${r.error}`] });
+      if (r.conflict)
+        return setSaved({
+          ok: false,
+          title: "Modifiée sur un autre appareil",
+          lines: [...lines, `Le fichier « ${r.conflict.fileName} » du dossier a été enregistré ailleurs le ${new Date(r.conflict.savedAt).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" })}, après votre dernière lecture. Il n'a pas été écrasé.`],
+          offer: "conflict",
+        });
       setSaved({
         ok: true,
         lines: [
@@ -150,6 +158,21 @@ export default function App() {
     }
   }, [saveNow, folder, campaigns, currentId]);
   const closeSaved = useCallback(() => setSaved(null), []);
+
+  /* Bouton « Rafraîchir » : recharge la campagne ouverte depuis son fichier du dossier */
+  const refreshFromFolder = async () => {
+    const r = await folder.refresh();
+    const when = (t) => new Date(t).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" });
+    if (r.error) return setSaved({ ok: false, title: "Rafraîchissement impossible", lines: [r.error] });
+    if (r.missing) return setSaved({ ok: false, title: "Rien à rafraîchir", lines: [`Aucun fichier « ${r.missing} » dans le dossier « ${folder.name} ». Cliquez sur Sauvegarder pour le créer.`] });
+    setSaved({
+      ok: true,
+      title: r.loaded ? "Campagne rechargée" : "Déjà à jour",
+      lines: r.loaded
+        ? [`Rechargée depuis « ${r.file} » (enregistré le ${when(r.savedAt)}).`, "La version précédente est dans les copies de secours ; Ctrl+Z l'annule."]
+        : [`Identique au fichier « ${r.file} » du dossier (enregistré le ${when(r.savedAt)}).`],
+    });
+  };
 
   /* Bouton « Importer » : si la campagne existe déjà ici (même identifiant, ou même nom),
      on propose de la mettre à jour plutôt que d'en créer une copie */
@@ -238,7 +261,7 @@ export default function App() {
       if (!confirm(`Supprimer définitivement la campagne « ${current?.name} » et tout son contenu ?${inFolder}\n\nExportez-la d'abord si vous voulez la garder.`)) return;
       const gone = currentId;
       await deleteCampaign();
-      await folder.removeFile(gone);
+      await folder.removeFile(gone, current?.name);
     } else {
       await switchCampaign(v);
     }
@@ -288,6 +311,11 @@ export default function App() {
       <button onClick={saveAll} className="inline-flex items-center gap-1.5 p-1.5 lg:px-2.5 rounded-md text-xs font-semibold" style={{ ...inputStyle, color: "var(--gold)" }} title="Sauvegarder maintenant (Ctrl+S)" aria-label="Sauvegarder">
         <Save size={16} /> <span className="hidden lg:inline">Sauvegarder</span>
       </button>
+      {folder.permission === "granted" && (
+        <button onClick={refreshFromFolder} className="inline-flex items-center gap-1.5 p-1.5 lg:px-2.5 rounded-md text-xs" style={inputStyle} title={`Rafraîchir : recharger la campagne depuis le dossier « ${folder.name} »`} aria-label="Rafraîchir depuis le dossier">
+          <RefreshCw size={16} /> <span className="hidden lg:inline">Rafraîchir</span>
+        </button>
+      )}
       <FolderButton folder={folder} />
       <button onClick={undo} disabled={!canUndo} className="p-1.5 rounded-md disabled:opacity-35" style={inputStyle} title="Annuler la dernière modification (Ctrl+Z)" aria-label="Annuler">
         <Undo2 size={16} />
@@ -335,6 +363,17 @@ export default function App() {
             <AlertTriangle size={14} /> Sauvegarde impossible : vos dernières modifications ne sont pas enregistrées.
             <button onClick={exportCampaign} className="underline">
               Exporter maintenant
+            </button>
+          </div>
+        )}
+        {folder.permission === "granted" && folder.remote?.campaignId === currentId && (
+          <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 px-3 py-1.5 text-xs" style={{ background: "rgba(201,162,39,.16)", color: "var(--parchment)", borderBottom: "1px solid var(--gold)" }} role="alert">
+            <RefreshCw size={13} style={{ color: "var(--gold)" }} /> « {folder.remote.fileName} » a été modifié sur un autre appareil ({new Date(folder.remote.savedAt).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" })}). Vos modifications ne sont plus écrites dans le dossier.
+            <button onClick={refreshFromFolder} className="underline font-semibold" style={{ color: "var(--gold)" }}>
+              Rafraîchir
+            </button>
+            <button onClick={() => saveAll({ force: true })} className="underline" style={{ color: "var(--muted)" }}>
+              Écraser avec ma version
             </button>
           </div>
         )}
@@ -514,7 +553,7 @@ export default function App() {
 
       {backupsOpen && <BackupsDialog listBackups={listBackups} restore={restoreBackup} onClose={() => setBackupsOpen(false)} />}
       {handout && projecting && <ProjectionAdmin handout={handout} overlay={overlay} setOverlay={setOverlay} onClose={() => setProjecting(false)} onStop={() => showHandout(null)} />}
-      {saved && <SaveDialog result={saved} folder={folder} onExport={exportCampaign} onClose={closeSaved} />}
+      {saved && <SaveDialog result={saved} folder={folder} onExport={exportCampaign} onRefresh={refreshFromFolder} onOverwrite={() => saveAll({ force: true })} onClose={closeSaved} />}
       {ask && <TextDialog {...ask} onClose={() => setAsk(null)} />}
       {folder.found && <FolderImportDialog found={folder.found} onDone={folder.finishImport} />}
       {fileImport && !folder.found && <FolderImportDialog found={fileImport} onDone={finishFileImport} fromFile />}

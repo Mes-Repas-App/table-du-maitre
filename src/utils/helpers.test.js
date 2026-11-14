@@ -5,7 +5,7 @@ import { applyHp, nextTurn, removeToken, rollInitiatives, rollFormula, normalize
 import { parseAttack, critFormula, takeDamage, inTemplate, inRevealed, saveMod } from "./helpers.js";
 import { fromOpen5e } from "../data/srd.js";
 import { spendHitDie, longRest, hitDieOf, tokenInTemplate, tickEffects, encounterDifficulty, crXp, placePath, sessionsMentioning } from "./helpers.js";
-import { saveCampaignFile, scanFolder, fingerprint, matchCandidates, removeCampaignFile, withoutSync } from "../sync/folder.js";
+import { fileNameFor, writeCampaignFile, readCampaignFile, fileSavedAt, changedElsewhere, listCampaignFiles, removeFile, fingerprint, matchCandidates, withoutSync } from "../sync/folder.js";
 
 test("Effets à durée : décompte au tour du lanceur, expiration", () => {
   let c = { activeId: "A", effects: [{ id: "e1", tokenId: "B", ownerId: "A", rounds: 2 }, { id: "e2", tokenId: "A", ownerId: "C", rounds: 1 }] };
@@ -58,101 +58,74 @@ function fakeDir(initial = {}) {
 
 const campaignData = (who) => ({ entities: [{ ...newEntity("pc"), id: who, name: who }] });
 
-test("Dossier : écrit ses fichiers sans jamais écraser ceux d'un autre appareil", async () => {
-  const autre = JSON.stringify({ installId: "TEL", campaignId: "courante", name: "Ma campagne", ...campaignData("Cyra") });
-  const dir = fakeDir({ "Ma campagne.json": autre, "notes.json": '{"pas":"une campagne"}' });
-  let files = await saveCampaignFile(dir, {}, { installId: "PC", campaignId: "courante", name: "Ma campagne", data: campaignData("Aria") });
-  assert.equal(files.courante, "Ma campagne (2).json"); // nom libre : le fichier du téléphone est intact
-  assert.equal(dir.files.get("Ma campagne.json"), autre);
-  // Seconde écriture : même fichier, mis à jour
-  files = await saveCampaignFile(dir, files, { installId: "PC", campaignId: "courante", name: "Ma campagne", data: campaignData("Aria2") });
-  assert.equal(files.courante, "Ma campagne (2).json");
-  assert.match(dir.files.get("Ma campagne (2).json"), /Aria2/);
-  // Renommage : nouveau fichier, l'ancien (le nôtre) est retiré, celui du téléphone reste
-  files = await saveCampaignFile(dir, files, { installId: "PC", campaignId: "courante", name: "Terres Brisées", data: campaignData("Aria2") });
-  assert.deepEqual([...dir.files.keys()].sort(), ["Ma campagne.json", "Terres Brisées.json", "notes.json"]);
-  // Si quelqu'un remplace « notre » fichier par le sien, on ne l'écrase pas : nouveau nom
-  dir.files.set("Terres Brisées.json", JSON.stringify({ installId: "AUTRE", campaignId: "x", ...campaignData("Zed") }));
-  files = await saveCampaignFile(dir, files, { installId: "PC", campaignId: "courante", name: "Terres Brisées", data: campaignData("Aria3") });
-  assert.equal(files.courante, "Terres Brisées (2).json");
-  assert.match(dir.files.get("Terres Brisées.json"), /Zed/);
-  // Une campagne vide n'est pas écrite
-  assert.deepEqual(await saveCampaignFile(dir, {}, { installId: "PC", campaignId: "vide", name: "Vide", data: { entities: [] } }), {});
+test("Dossier : un fichier par nom de campagne, écrasé à chaque enregistrement", async () => {
+  const dir = fakeDir({ "notes.json": '{"pas":"une campagne"}' });
+  const f = fileNameFor("Ma campagne");
+  assert.equal(f, "Ma campagne.json");
+  assert.equal(fileNameFor('Les "Terres" : brisées'), "Les -Terres- - brisées.json"); // caractères interdits
+  const t1 = await writeCampaignFile(dir, f, { name: "Ma campagne", data: campaignData("Aria") });
+  await new Promise((r) => setTimeout(r, 2));
+  const t2 = await writeCampaignFile(dir, f, { name: "Ma campagne", data: campaignData("Aria2") });
+  assert.deepEqual([...dir.files.keys()].sort(), ["Ma campagne.json", "notes.json"]); // pas de copie : écrasé
+  assert.ok(t2 > t1);
+  assert.equal(await fileSavedAt(dir, f), t2); // lu dans le début du fichier
+  const r = await readCampaignFile(dir, f);
+  assert.equal(r.data.entities[0].name, "Aria2");
+  assert.equal(r.print, fingerprint(campaignData("Aria2")));
+  assert.equal(await readCampaignFile(dir, "notes.json"), null); // pas une campagne
+  assert.equal(await fileSavedAt(dir, "absent.json"), null);
 });
 
-test("Dossier : propose les sauvegardes des autres, pas les siennes ni les doublons", async () => {
+test("Dossier : un fichier modifié ailleurs n'est pas écrasé en silence", () => {
+  const known = { fileName: "Ma campagne.json", savedAt: 100 };
+  assert.equal(changedElsewhere(null, known, "Ma campagne.json"), false); // pas encore de fichier
+  assert.equal(changedElsewhere(100, known, "Ma campagne.json"), false); // c'est notre dernière version
+  assert.equal(changedElsewhere(150, known, "Ma campagne.json"), true); // réenregistré par un autre appareil
+  assert.equal(changedElsewhere(100, undefined, "Ma campagne.json"), true); // jamais lu ici
+  assert.equal(changedElsewhere(100, known, "Autre nom.json"), true); // renommée vers un fichier existant
+});
+
+test("Dossier : liste des campagnes, fichiers inchangés pas relus", async () => {
   const dir = fakeDir({
-    "Tel.json": JSON.stringify({ installId: "TEL", campaignId: "a", name: "Campagne du téléphone", savedAt: 5, ...campaignData("Cyra") }),
-    "Moi.json": JSON.stringify({ installId: "PC", campaignId: "b", name: "La mienne", ...campaignData("Aria") }),
-    "Export.json": JSON.stringify({ name: "Vieil export", ...campaignData("Bran") }), // export manuel, sans installId
-    "Doublon.json": JSON.stringify({ installId: "TEL", campaignId: "c", name: "Déjà là", ...campaignData("Dana") }),
+    "Tel.json": JSON.stringify({ app: "table-du-maitre", savedAt: 5, name: "Tel", ...campaignData("Cyra") }),
     "image.json": "pas du JSON",
   });
-  const { candidates } = await scanFolder(dir, { installId: "PC", localPrints: new Set([fingerprint(campaignData("Dana"))]) });
-  assert.deepEqual(candidates.map((c) => c.name), ["Campagne du téléphone", "Vieil export"]);
-  assert.equal(candidates[0].counts.entities, 1);
-  // Une campagne importée telle quelle est quand même écrite : notre fichier reflète toujours l'état d'ici
-  assert.deepEqual(await saveCampaignFile(dir, {}, { installId: "PC", campaignId: "n", name: "Campagne du téléphone", data: campaignData("Cyra") }), { n: "Campagne du téléphone.json" });
-  // Déjà importée : plus proposée… sauf si le téléphone en a enregistré une version plus récente
-  const again = await scanFolder(dir, { installId: "PC", imported: { "Tel.json": 5 } });
-  assert.ok(!again.candidates.some((c) => c.fileName === "Tel.json"));
-  dir.files.set("Tel.json", JSON.stringify({ installId: "TEL", campaignId: "a", name: "Campagne du téléphone", savedAt: 9, ...campaignData("Cyra2") }));
-  const newer = await scanFolder(dir, { installId: "PC", imported: { "Tel.json": 5 } });
-  assert.ok(newer.candidates.some((c) => c.fileName === "Tel.json"));
+  const cache = new Map();
+  const first = await listCampaignFiles(dir, cache);
+  assert.deepEqual(first.map((c) => [c.fileName, c.name, c.savedAt, c.counts.entities]), [["Tel.json", "Tel", 5, 1]]);
+  const reads = dir.reads;
+  await listCampaignFiles(dir, cache);
+  assert.equal(dir.reads, reads); // second passage : rien de relu
+  dir.files.set("Tel.json", JSON.stringify({ app: "table-du-maitre", savedAt: 9, name: "Tel", ...campaignData("Cyra2") }));
+  const again = await listCampaignFiles(dir, cache);
+  assert.equal(dir.reads, reads + 1); // modifié (taille différente) : relu
+  assert.equal(again[0].savedAt, 9);
+  await removeFile(dir, "Tel.json");
+  assert.deepEqual(await listCampaignFiles(dir, cache), []);
 });
 
-test("Dossier : une sauvegarde de la même campagne est proposée en mise à jour", async () => {
+test("Importer : un fichier de la même campagne est proposé en mise à jour", () => {
   const withSync = (who, syncId) => ({ ...campaignData(who), settings: { rules: "2024", syncId } });
-  // L'identifiant commun survit à la normalisation mais pas à l'empreinte (même contenu = doublon)
+  // L'identifiant commun survit à la normalisation mais pas à l'empreinte (même contenu = identique)
   assert.equal(normalizeCampaign(withSync("A", "S1")).settings.syncId, "S1");
   assert.equal(fingerprint(withSync("A", "S1")), fingerprint(withSync("A", "S2")));
-  const dir = fakeDir({
-    "Tel.json": JSON.stringify({ installId: "TEL", campaignId: "x", name: "Terres (renommée)", savedAt: 20, ...withSync("Cyra", "S1") }),
-    "Ancienne.json": JSON.stringify({ installId: "TEL", campaignId: "y", name: "Ma campagne", savedAt: 5, ...campaignData("Bran") }),
-    "Neuve.json": JSON.stringify({ installId: "TEL", campaignId: "z", name: "Autre", savedAt: 30, ...campaignData("Dana") }),
-    "Moi.json": JSON.stringify({ installId: "PC", campaignId: "loc2", name: "Ma campagne", savedAt: 10, ...campaignData("Aria") }),
-  });
-  const { candidates, own } = await scanFolder(dir, { installId: "PC" });
-  assert.equal(own.loc2.savedAt, 10);
+  const files = [
+    { fileName: "a.json", name: "Terres (renommée)", syncId: "S1" },
+    { fileName: "b.json", name: "Ma campagne", syncId: "S5" },
+    { fileName: "c.json", name: "Autre", syncId: null },
+  ];
   const locals = [
     { id: "loc1", name: "Terres", syncId: "S1" },
     { id: "loc2", name: "Ma campagne (importée)", syncId: "S9" },
   ];
-  const m = Object.fromEntries(matchCandidates(candidates, locals, own).map((c) => [c.fileName, c]));
-  assert.equal(m["Tel.json"].target, "loc1"); // même syncId, malgré un autre nom
-  assert.equal(m["Tel.json"].sure, true);
-  assert.equal(m["Tel.json"].newer, true); // rien d'écrit ici pour loc1
-  assert.equal(m["Ancienne.json"].target, "loc2"); // même nom, au suffixe près…
-  assert.equal(m["Ancienne.json"].sure, false); // … mais peut-être une autre campagne : jamais automatique
-  assert.equal(m["Ancienne.json"].newer, false); // plus ancienne que notre version (10)
-  assert.equal(m["Neuve.json"].target, undefined); // inconnue ici : nouvelle campagne
-  // Première installation : la « Ma campagne » vide d'ici peut être remplacée sans risque
-  const fresh = matchCandidates(candidates, [{ id: "vide", name: "Ma campagne", syncId: "S7", empty: true }], {});
-  assert.equal(fresh.find((c) => c.fileName === "Ancienne.json").sure, true);
-  // « Nouvelle campagne » pour une campagne déjà présente : elle reçoit son propre identifiant
+  const m = Object.fromEntries(matchCandidates(files, locals).map((c) => [c.fileName, c]));
+  assert.deepEqual([m["a.json"].target, m["a.json"].sure], ["loc1", true]); // même syncId, malgré un autre nom
+  assert.deepEqual([m["b.json"].target, m["b.json"].sure], ["loc2", false]); // même nom seulement : jamais d'office
+  assert.equal(m["c.json"].target, undefined);
+  assert.equal(matchCandidates([files[1]], [{ id: "v", name: "Ma campagne", empty: true }])[0].sure, true); // campagne vide d'ici
   assert.equal(normalizeCampaign(withoutSync(withSync("A", "S1"))).settings.syncId, undefined);
 });
 
-test("Dossier : fichiers inchangés pas relus, suppression de nos seuls fichiers", async () => {
-  const dir = fakeDir({
-    "Tel.json": JSON.stringify({ installId: "TEL", campaignId: "a", name: "Tel", savedAt: 5, ...campaignData("Cyra") }),
-  });
-  const cache = new Map();
-  await scanFolder(dir, { installId: "PC", cache });
-  await scanFolder(dir, { installId: "PC", cache });
-  assert.equal(dir.reads, 1); // second passage : rien de relu
-  dir.files.set("Tel.json", JSON.stringify({ installId: "TEL", campaignId: "a", name: "Tel", savedAt: 9, ...campaignData("Cyra2") }));
-  const { candidates } = await scanFolder(dir, { installId: "PC", cache });
-  assert.equal(dir.reads, 2); // modifié (taille différente) : relu
-  assert.equal(candidates[0].savedAt, 9);
-  // Suppression : notre fichier part, celui d'un autre appareil reste même s'il est référencé
-  let files = await saveCampaignFile(dir, {}, { installId: "PC", campaignId: "m", name: "Mienne", data: campaignData("Aria") });
-  files = await removeCampaignFile(dir, files, { installId: "PC", campaignId: "m" });
-  assert.deepEqual(files, {});
-  assert.ok(!dir.files.has("Mienne.json"));
-  assert.deepEqual(await removeCampaignFile(dir, { a: "Tel.json" }, { installId: "PC", campaignId: "a" }), {});
-  assert.ok(dir.files.has("Tel.json"));
-});
 
 test("Dés de vie et repos long selon les règles 2014 / 2024", () => {
   const guerrier = { clazz: "Guerrier", level: 6, hp: 10, hpMax: 50, tempHp: 0, abilities: { con: 14 }, hdUsed: 5 };

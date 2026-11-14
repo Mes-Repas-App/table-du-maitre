@@ -1,11 +1,8 @@
 /* Dossier de sauvegarde choisi par l'utilisateur (API « File System Access » :
-   Chrome et Edge sur ordinateur). Chaque campagne y est écrite dans son propre fichier JSON,
-   importable aussi avec le bouton « Importer ».
-
-   Règle d'or : on n'écrase jamais un fichier qui n'est pas à nous. Nos fichiers portent
-   l'identifiant de ce navigateur (installId) ; tout autre fichier est seulement lu, et proposé
-   à l'import : en nouvelle campagne, ou en mise à jour de la même campagne (même syncId,
-   ou à défaut même nom) si elle existe déjà ici. */
+   Chrome et Edge, ordinateur et Android). Chaque campagne y a UN fichier, nommé d'après
+   la campagne (« Ma campagne.json ») : c'est la référence partagée entre appareils.
+   Enregistrer écrase ce fichier ; « Rafraîchir » le relit. Les fichiers s'importent aussi
+   avec le bouton « Importer ». */
 
 import { normalizeCampaign } from "../utils/helpers.js";
 
@@ -13,89 +10,72 @@ export const folderSupported = typeof window !== "undefined" && "showDirectoryPi
 
 export const hasContent = (d) => ["entities", "combats", "sessions", "world"].some((k) => d?.[k]?.length);
 export const safeName = (s) => String(s || "").replace(/[\\/:*?"<>|]+/g, "-").replace(/\s+/g, " ").trim().slice(0, 60) || "Campagne";
-const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+/** Le fichier d'une campagne dans le dossier : son nom */
+export const fileNameFor = (name) => `${safeName(name)}.json`;
 
-/** Empreinte du contenu d'une campagne, pour repérer les doublons exacts (l'identifiant commun n'en fait pas partie) */
+/** Empreinte du contenu d'une campagne, pour repérer les versions identiques (l'identifiant commun n'en fait pas partie) */
 export function fingerprint(data) {
   const n = normalizeCampaign(data);
   return JSON.stringify([n.entities, n.combats, n.sessions, n.world, n.settings.rules]);
 }
 
-async function exists(dir, name) {
+async function fileOf(dir, fileName) {
   try {
-    await dir.getFileHandle(name);
-    return true;
+    return await (await dir.getFileHandle(fileName)).getFile();
   } catch {
-    return false;
+    return null; // absent
   }
 }
 
-async function freeName(dir, base) {
-  for (let i = 1; ; i++) {
-    const name = i === 1 ? `${base}.json` : `${base} (${i}).json`;
-    if (!(await exists(dir, name))) return name;
-  }
+/** Date d'enregistrement d'un fichier de campagne, en ne lisant que son début ; null s'il n'existe pas */
+export async function fileSavedAt(dir, fileName) {
+  const file = await fileOf(dir, fileName);
+  if (!file) return null;
+  const m = (await file.slice(0, 600).text()).match(/"savedAt":(\d+)/);
+  return m ? Number(m[1]) : file.lastModified;
 }
 
-/** Le fichier appartient-il à ce navigateur, pour cette campagne ? (lit seulement le début) */
-export async function isOurs(dir, name, installId, campaignId) {
+/** Lit un fichier de campagne → { data, savedAt, print } ; null s'il n'existe pas ou n'est pas une campagne */
+export async function readCampaignFile(dir, fileName) {
+  const file = await fileOf(dir, fileName);
+  if (!file) return null;
   try {
-    const file = await (await dir.getFileHandle(name)).getFile();
-    const head = await file.slice(0, 400).text();
-    return head.includes(`"installId":"${installId}"`) && head.includes(`"campaignId":"${campaignId}"`);
+    const data = JSON.parse(await file.text());
+    normalizeCampaign(data); // lève une erreur si ce n'est pas une campagne
+    return { data, savedAt: data.savedAt || file.lastModified, print: fingerprint(data) };
   } catch {
-    return false; // disparu ou illisible : on en créera un nouveau
+    return null;
   }
 }
 
-/**
- * Écrit une campagne dans le dossier. `files` associe chaque campagne à son fichier ;
- * renvoie la table mise à jour. Les campagnes vides ne sont pas écrites. Une campagne identique
- * à la sauvegarde d'un autre appareil l'est quand même : notre fichier doit toujours refléter
- * l'état de la campagne ici (les autres appareils l'ignorent, puisqu'ils l'ont déjà).
- */
-export async function saveCampaignFile(dir, files, { installId, campaignId, name, data }) {
-  if (!hasContent(data)) return files;
-  const base = safeName(name);
-  let file = files[campaignId];
-  const sameName = file && new RegExp(`^${escapeRe(base)}( \\(\\d+\\))?\\.json$`).test(file);
-  if (!file || !sameName || !(await isOurs(dir, file, installId, campaignId))) {
-    const next = await freeName(dir, base);
-    // Campagne renommée : on retire l'ancien fichier, seulement s'il est bien à nous
-    if (file && file !== next && (await isOurs(dir, file, installId, campaignId))) await dir.removeEntry(file).catch(() => {});
-    file = next;
-    files = { ...files, [campaignId]: file };
-  }
-  const handle = await dir.getFileHandle(file, { create: true });
-  const w = await handle.createWritable();
-  // installId et campaignId en tête : isOurs() les lit sans charger tout le fichier
-  await w.write(JSON.stringify({ installId, campaignId, app: "table-du-maitre", name, savedAt: Date.now(), ...data }));
+/** Écrit (en écrasant) le fichier d'une campagne ; renvoie sa date d'enregistrement */
+export async function writeCampaignFile(dir, fileName, { name, data }) {
+  const savedAt = Date.now();
+  const w = await (await dir.getFileHandle(fileName, { create: true })).createWritable();
+  // savedAt en tête : fileSavedAt() le lit sans charger tout le fichier
+  await w.write(JSON.stringify({ app: "table-du-maitre", savedAt, name, ...data }));
   await w.close();
-  return files;
+  return savedAt;
 }
 
-/** Campagne supprimée : on retire son fichier (seulement s'il est bien à nous) ; renvoie la table mise à jour */
-export async function removeCampaignFile(dir, files, { installId, campaignId }) {
-  const file = files[campaignId];
-  if (!file) return files;
-  if (await isOurs(dir, file, installId, campaignId)) await dir.removeEntry(file).catch(() => {});
-  const rest = { ...files };
-  delete rest[campaignId];
-  return rest;
+export async function removeFile(dir, fileName) {
+  await dir.removeEntry(fileName).catch(() => {});
 }
 
 /**
- * Parcourt le dossier : sauvegardes d'autres appareils (ou anciennes installations)
- * à proposer à l'import, sauf celles déjà présentes à l'identique dans l'appli et celles
- * déjà importées (`imported` : nom de fichier → date de la version importée). Une version
- * plus récente d'un fichier déjà importé est de nouveau proposée.
- * `own` : pour nos propres fichiers, campagne → { savedAt, print, name } (dernière version écrite ici).
+ * Le fichier a-t-il été enregistré ailleurs depuis la dernière fois que cet appareil l'a lu ou écrit ?
+ * `known` : { fileName, savedAt } de notre dernière synchronisation avec ce fichier.
+ * Un fichier présent mais jamais synchronisé d'ici compte aussi comme « modifié ailleurs ».
+ */
+export const changedElsewhere = (savedAt, known, fileName) => savedAt != null && (!known || known.fileName !== fileName || savedAt > known.savedAt);
+
+/**
+ * Toutes les campagnes du dossier → [{ fileName, name, data, savedAt, print, counts }].
  * `cache` (Map, facultatif) : les fichiers inchangés depuis le dernier passage ne sont pas relus
  * (utile sur un dossier Drive, où chaque lecture peut télécharger le fichier).
  */
-export async function scanFolder(dir, { installId, localPrints = new Set(), imported = {}, cache = new Map() }) {
-  const candidates = [];
-  const own = {};
+export async function listCampaignFiles(dir, cache = new Map()) {
+  const list = [];
   const seen = new Set();
   for await (const [fileName, handle] of dir.entries()) {
     if (handle.kind !== "file" || !/\.json$/i.test(fileName)) continue;
@@ -107,7 +87,7 @@ export async function scanFolder(dir, { installId, localPrints = new Set(), impo
         let json = null;
         try {
           json = JSON.parse(await file.text());
-          normalizeCampaign(json); // lève une erreur si ce n'est pas une campagne
+          normalizeCampaign(json);
         } catch {
           json = null; // autre fichier JSON : ignoré (et mémorisé pour ne pas le relire)
         }
@@ -117,50 +97,41 @@ export async function scanFolder(dir, { installId, localPrints = new Set(), impo
       const { json, print } = entry;
       if (!json) continue;
       const n = normalizeCampaign(json);
-      const savedAt = json.savedAt || file.lastModified;
-      if (json.installId && json.installId === installId) {
-        // nos propres sauvegardes : on retient la dernière version écrite de chaque campagne
-        if (!(own[json.campaignId]?.savedAt > savedAt)) own[json.campaignId] = { savedAt, print, name: json.name };
-        continue;
-      }
-      if (localPrints.has(print) || imported[fileName] === savedAt) continue;
-      candidates.push({
+      list.push({
         fileName,
         name: String(json.name || fileName.replace(/\.json$/i, "")),
         data: json,
-        savedAt,
-        syncId: n.settings.syncId || null,
+        savedAt: json.savedAt || file.lastModified,
+        print,
         counts: { entities: n.entities.length, combats: n.combats.length, sessions: n.sessions.length, world: n.world.length },
       });
     } catch {
-      /* autre fichier JSON : ignoré */
+      /* fichier illisible : ignoré */
     }
   }
   for (const k of [...cache.keys()]) if (!seen.has(k)) cache.delete(k); // fichiers disparus
-  return { candidates: candidates.sort((a, b) => b.savedAt - a.savedAt), own };
+  return list.sort((a, b) => b.savedAt - a.savedAt);
 }
+
+/* ——— Bouton « Importer » (fichier JSON choisi à la main) ——— */
 
 const baseName = (n) => String(n).replace(/ \(importée(?: \d+)?\)$/, "");
 
 /**
- * Relie chaque sauvegarde trouvée à la campagne locale correspondante, s'il y en a une :
+ * Relie un fichier importé à la campagne locale correspondante, s'il y en a une :
  * même identifiant commun (syncId), ou à défaut même nom (au suffixe « (importée) » près).
- * `sure` : c'est certainement la même campagne (même syncId), ou celle d'ici est vide (première
- * installation). Un simple nom identique peut désigner deux campagnes différentes (deux « Ma
- * campagne ») : ce n'est alors jamais proposé automatiquement ni coché d'office.
- * `newer` : la sauvegarde est plus récente que la dernière version de cette campagne écrite ici.
- * `locals` : [{ id, name, syncId, empty }] ; `own` : renvoyé par scanFolder.
+ * `sure` : certainement la même campagne (même syncId), ou celle d'ici est vide. Un simple nom
+ * identique peut désigner deux campagnes différentes : jamais coché d'office.
+ * `locals` : [{ id, name, syncId, empty }].
  */
-export function matchCandidates(candidates, locals, own = {}) {
+export function matchCandidates(candidates, locals) {
   return candidates.map((f) => {
     const bySync = f.syncId && locals.find((l) => l.syncId === f.syncId);
     const t = bySync || locals.find((l) => baseName(l.name) === baseName(f.name));
     if (!t) return f;
-    return { ...f, target: t.id, targetName: t.name, sure: !!bySync || !!t.empty, newer: f.savedAt > (own[t.id]?.savedAt || 0) };
+    return { ...f, target: t.id, targetName: t.name, sure: !!bySync || !!t.empty };
   });
 }
-
-
 
 /** Copie d'une campagne ajoutée « en nouvelle campagne » alors qu'elle existe déjà ici : elle reçoit son propre identifiant */
 export const withoutSync = (data) => ({ ...data, settings: { ...data.settings, syncId: undefined } });
