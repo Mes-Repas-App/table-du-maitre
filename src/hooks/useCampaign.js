@@ -131,6 +131,13 @@ export function useCampaign() {
     return () => clearTimeout(t);
   }, [camp, loaded, currentId, save]);
 
+  /** Bouton « Sauvegarder » : écriture immédiate, sans attendre le délai (lève une erreur en cas d'échec) */
+  const saveNow = useCallback(async () => {
+    pending.current = null;
+    await put(currentId, camp);
+    setSaveState("saved");
+  }, [currentId, camp]);
+
   /* Liste des campagnes et campagne ouverte */
   useEffect(() => {
     if (loaded) put(INDEX_KEY, { current: currentId, list: campaigns }).catch(() => setSaveState("error"));
@@ -305,6 +312,7 @@ export function useCampaign() {
     loaded,
     loadError,
     saveState,
+    saveNow,
     exportCampaign,
     importCampaign,
     exportDue,

@@ -2,11 +2,12 @@ import { useState, useEffect } from "react";
 import { PLAYER_CHANNEL, isShared } from "../../utils/helpers.js";
 import Portrait from "../ui/Portrait.jsx";
 import Board from "./Board.jsx";
+import { HandoutStage } from "../ui/Projection.jsx";
 
 /**
  * Écran joueurs (?joueurs) : affiche en lecture seule le combat ouvert par le MJ
  * dans l'autre fenêtre (sans pions cachés, zones sous le brouillard ni PV des monstres),
- * l'ordre d'initiative et les documents que le MJ choisit de montrer.
+ * l'ordre d'initiative et les documents que le MJ choisit de montrer (pivotés et annotés en direct).
  */
 export default function PlayerView() {
   const [s, setS] = useState({});
@@ -62,16 +63,8 @@ export default function PlayerView() {
 
       {/* Document montré par le MJ */}
       {s.handout && (
-        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-4 p-6" style={{ background: "rgba(10,8,5,.94)" }}>
-          <h1 className="text-2xl md:text-4xl text-center" style={{ fontFamily: "var(--display)", color: "var(--gold)" }}>
-            {s.handout.title}
-          </h1>
-          {s.handout.image && <img src={s.handout.image} alt={s.handout.title} className="max-h-[70vh] max-w-full rounded-xl shadow-2xl" style={{ border: "1px solid var(--edge)" }} />}
-          {s.handout.text && (
-            <p className="max-w-2xl whitespace-pre-wrap text-lg leading-relaxed text-center" style={{ color: "var(--parchment)", fontFamily: "var(--display)" }}>
-              {s.handout.text}
-            </p>
-          )}
+        <div className="fixed inset-0 z-50 flex flex-col" style={{ background: "var(--bg)" }}>
+          <HandoutStage handout={s.handout} overlay={s.overlay} />
         </div>
       )}
     </div>

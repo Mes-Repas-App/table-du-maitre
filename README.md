@@ -43,7 +43,7 @@ Le résultat se trouve dans `dist/`.
   - **Déroulé** : la session racontée scène par scène — type (scène, combat, dialogue, découverte, voyage, note), récit détaillé, **images** (agrandissables et montrables aux joueurs), **liens** vers personnages, PNJ, monstres, lieux et quêtes ; scènes réordonnables et repliables.
   - **Bilan** : résumé (repris en « Précédemment… » à la session suivante), personnages présents, tout ce qui a été croisé, XP à partager, trésor, pistes pour la suite.
   - Date réelle et date dans le monde du jeu. Chaque fiche, lieu et quête liste les sessions où il apparaît.
-- **Monde** : quêtes (statut, lieu, commanditaire, récompense, objectifs à cocher), lieux imbriqués (région → ville → taverne) avec type et icône, fil d'Ariane, occupants (PNJ, monstres, personnages) et quêtes du lieu, et documents (lettres, cartes, portraits). Bouton « Montrer aux joueurs » pour les afficher sur l'écran joueurs.
+- **Monde** : quêtes (statut, lieu, commanditaire, récompense, objectifs à cocher), lieux imbriqués (région → ville → taverne) avec type et icône, fil d'Ariane, occupants (PNJ, monstres, personnages) et quêtes du lieu, et documents (lettres, cartes, portraits). Bouton « Montrer aux joueurs » pour les afficher sur l'écran joueurs : le MJ garde un **écran de projection** avec les commandes (pivoter, dessiner en couleur au doigt ou à la souris, effacer), et les joueurs voient le résultat en direct, sans les boutons.
 - **Noms** : le nom d'un élément (fiche, lieu, quête, session, rencontre) est souligné en pointillés avec un crayon ; pour un élément neuf, il est déjà sélectionné : il suffit de taper.
 - **Recherche globale** dans toute la campagne (fiches, objets, sorts, sessions, monde, combats).
 
@@ -66,6 +66,7 @@ Le résultat se trouve dans `dist/`.
 - **Règles 2024 par défaut** (Manuel des joueurs 2024) ; une campagne peut passer aux règles 2014 depuis ce même menu. Cela change les textes des états, l'épuisement, le JS de concentration, les dés de vie au repos long et le bestiaire.
 - **Annuler** (bouton ↶ ou Ctrl+Z) : revient sur les 50 dernières modifications ; les gestes rapprochés (glisser un pion, taper un nom) comptent pour une seule étape.
 - Sauvegarde automatique dans le navigateur (IndexedDB : plusieurs centaines de Mo, cartes et portraits compris). Une ancienne sauvegarde est reprise automatiquement. En cas d'échec, un bandeau rouge propose d'exporter.
+- Bouton **Sauvegarder** (ou Ctrl+S) : enregistre tout de suite, dans le navigateur et dans le dossier de sauvegarde s'il y en a un ; une fenêtre confirme où la campagne a été enregistrée.
 - Export / import en fichier JSON (boutons dans l'en-tête) pour changer de machine ou faire des sauvegardes. Un fichier importé devient une **nouvelle campagne** (rien n'est écrasé) ; les anciens fichiers sont acceptés.
 - **Copies de secours automatiques** : au plus une par heure, les 10 dernières gardées par campagne (menu de campagne → « Copies de secours… »). Un bandeau rappelle d'exporter si le dernier export date de plus d'une semaine (sauf si un dossier de sauvegarde est actif).
 - **Dossier de sauvegarde** (bouton dossier dans l'en-tête) : vos campagnes enregistrées en fichiers dans le dossier de votre choix. Voir ci-dessous.

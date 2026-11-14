@@ -31,6 +31,7 @@ export function useFolderBackup({ loaded, currentId, camp, campaigns, readCampai
           ? "Plus de place sur le disque pour enregistrer la sauvegarde."
           : `Écriture impossible (${err?.message || err}).`;
     setState((s) => ({ ...s, permission: denied ? "prompt" : s.permission, error: denied ? null : message }));
+    return denied ? "Le navigateur demande de ré-autoriser l'accès au dossier." : message;
   };
 
   /* Empreintes des sauvegardes étrangères (pour ne pas les recopier) et propositions d'import */
@@ -154,6 +155,17 @@ export function useFolderBackup({ loaded, currentId, camp, campaigns, readCampai
     }
   }, [scan, writeAll]);
 
+  /** Bouton « Sauvegarder » : écrit la campagne ouverte tout de suite → { file } ou { error } */
+  const saveNow = useCallback(async () => {
+    const { currentId: id, camp: data, campaigns: list } = latest.current;
+    try {
+      await write(id, list.find((c) => c.id === id)?.name, data);
+      return { file: rec.current.files[id] };
+    } catch (err) {
+      return { error: fail(err) };
+    }
+  }, [write]);
+
   const forget = useCallback(async () => {
     rec.current = null;
     await del(FOLDER_KEY);
@@ -180,5 +192,5 @@ export function useFolderBackup({ loaded, currentId, camp, campaigns, readCampai
     return () => document.removeEventListener("visibilitychange", onHide);
   }, [state.permission, write]);
 
-  return { supported: folderSupported, ...state, found, choose, reconnect, forget, lookForBackups, finishImport };
+  return { supported: folderSupported, ...state, found, choose, reconnect, saveNow, forget, lookForBackups, finishImport };
 }

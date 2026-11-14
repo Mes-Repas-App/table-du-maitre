@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from "react";
-import { Users, Ghost, Skull, Swords, Crosshair, Download, Upload, AlertTriangle, Undo2, ScrollText, Map as MapIcon, MonitorPlay, X } from "lucide-react";
+import { Users, Ghost, Skull, Swords, Crosshair, Download, Upload, AlertTriangle, Undo2, ScrollText, Map as MapIcon, MonitorPlay, X, Save } from "lucide-react";
 import { RACES, CLASSES, BACKGROUNDS } from "./data/reference.js";
 import { uid, withLog, PLAYER_CHANNEL, openPlayerScreen } from "./utils/helpers.js";
 import { useCampaign } from "./hooks/useCampaign.js";
@@ -17,7 +17,11 @@ import SessionsView from "./components/campaign/SessionsView.jsx";
 import WorldView from "./components/campaign/WorldView.jsx";
 import GlobalSearch from "./components/campaign/GlobalSearch.jsx";
 import BackupsDialog from "./components/campaign/BackupsDialog.jsx";
+import SaveDialog from "./components/campaign/SaveDialog.jsx";
+import ProjectionAdmin from "./components/campaign/ProjectionAdmin.jsx";
 import { inputStyle } from "./components/ui/form.jsx";
+
+const BLANK_OVERLAY = { rotation: 0, strokes: [] };
 
 function TabBtn({ active, onClick, icon: Icon, label, count }) {
   return (
@@ -53,6 +57,7 @@ export default function App() {
     loaded,
     loadError,
     saveState,
+    saveNow,
     exportCampaign,
     importCampaign,
     exportDue,
@@ -80,6 +85,9 @@ export default function App() {
   const [worldId, setWorldId] = useState(null);
   const [backupsOpen, setBackupsOpen] = useState(false);
   const [handout, setHandout] = useState(null); // document affiché sur l'écran joueurs
+  const [overlay, setOverlay] = useState(BLANK_OVERLAY); // rotation et dessins du document montré
+  const [projecting, setProjecting] = useState(false); // écran de projection du MJ ouvert
+  const [saved, setSaved] = useState(null); // popin du bouton « Sauvegarder »
   const [ask, setAsk] = useState(null); // fenêtre de saisie : { title, initial, okLabel, onOk }
   const importRef = useRef(null);
   const channelRef = useRef(null);
@@ -94,22 +102,53 @@ export default function App() {
   );
 
   /* Documents montrés aux joueurs (l'écran joueurs les affiche par-dessus la carte) */
-  handoutRef.current = handout;
+  // Le document (lourd : image) n'est envoyé qu'une fois ; rotation et dessins (légers) à chaque changement
+  handoutRef.current = { handout, overlay };
   useEffect(() => {
     const ch = new BroadcastChannel(PLAYER_CHANNEL);
     channelRef.current = ch;
-    ch.onmessage = (ev) => ev.data === "hello" && ch.postMessage({ handout: handoutRef.current });
+    ch.onmessage = (ev) => ev.data === "hello" && ch.postMessage(handoutRef.current);
     return () => ch.close();
   }, []);
+  useEffect(() => {
+    channelRef.current?.postMessage({ overlay });
+  }, [overlay]);
   const showHandout = useCallback((h) => {
     setHandout(h);
-    channelRef.current?.postMessage({ handout: h });
+    setOverlay(BLANK_OVERLAY);
+    setProjecting(!!h);
+    channelRef.current?.postMessage({ handout: h, overlay: BLANK_OVERLAY });
     if (h) openPlayerScreen();
   }, []);
 
-  /* Ctrl+Z (⌘Z) annule, sauf dans un champ de saisie qui a sa propre annulation */
+  /* Bouton « Sauvegarder » : navigateur, puis dossier choisi ; la popin dit où c'est enregistré */
+  const saveAll = useCallback(async () => {
+    try {
+      await saveNow();
+    } catch (err) {
+      return setSaved({ ok: false, lines: [`Enregistrement dans le navigateur impossible (${err?.message || err}). Exportez la campagne pour ne rien perdre.`], offer: "folder" });
+    }
+    const lines = [`« ${campaigns.find((c) => c.id === currentId)?.name} » est enregistrée dans ce navigateur.`];
+    if (folder.permission === "granted") {
+      const r = await folder.saveNow();
+      if (r.error) return setSaved({ ok: false, lines: [...lines, `Dossier « ${folder.name} » : ${r.error}`] });
+      setSaved({ ok: true, lines: [...lines, r.file ? `Copie dans le dossier « ${folder.name} » (${r.file}).` : `Rien à copier dans le dossier « ${folder.name} » : la campagne est encore vide.`] });
+    } else if (folder.permission === "prompt") {
+      setSaved({ ok: false, lines: [...lines, `Le dossier « ${folder.name} » doit être ré-autorisé : rien n'y a été écrit.`], offer: "reconnect" });
+    } else {
+      setSaved({ ok: true, lines, offer: "folder" });
+    }
+  }, [saveNow, folder, campaigns, currentId]);
+  const closeSaved = useCallback(() => setSaved(null), []);
+
+  /* Ctrl+S (⌘S) sauvegarde ; Ctrl+Z (⌘Z) annule, sauf dans un champ de saisie qui a sa propre annulation */
   useEffect(() => {
     const onKey = (ev) => {
+      if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === "s") {
+        ev.preventDefault();
+        saveAll();
+        return;
+      }
       if (!(ev.ctrlKey || ev.metaKey) || ev.shiftKey || ev.key.toLowerCase() !== "z") return;
       if (ev.target.matches?.("input, textarea, select")) return;
       ev.preventDefault();
@@ -117,7 +156,7 @@ export default function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [undo]);
+  }, [undo, saveAll]);
 
   const resetView = () => {
     setEditingId(null);
@@ -199,6 +238,9 @@ export default function App() {
   /* Boutons d'action de l'en-tête (affichés en haut sur ordinateur, en 2e ligne sur téléphone) */
   const actions = (
     <>
+      <button onClick={saveAll} className="inline-flex items-center gap-1.5 p-1.5 lg:px-2.5 rounded-md text-xs font-semibold" style={{ ...inputStyle, color: "var(--gold)" }} title="Sauvegarder maintenant (Ctrl+S)" aria-label="Sauvegarder">
+        <Save size={16} /> <span className="hidden lg:inline">Sauvegarder</span>
+      </button>
       <FolderButton folder={folder} />
       <button onClick={undo} disabled={!canUndo} className="p-1.5 rounded-md disabled:opacity-35" style={inputStyle} title="Annuler la dernière modification (Ctrl+Z)" aria-label="Annuler">
         <Undo2 size={16} />
@@ -269,8 +311,11 @@ export default function App() {
           </div>
         )}
         {handout && (
-          <div className="flex items-center justify-center gap-2 px-3 py-1 text-xs" style={{ background: "rgba(139,157,212,.15)", color: "var(--arcane)" }}>
+          <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-0.5 px-3 py-1 text-xs" style={{ background: "rgba(139,157,212,.15)", color: "var(--arcane)" }}>
             <MonitorPlay size={13} /> Montré aux joueurs : « {handout.title} »
+            <button onClick={() => setProjecting(true)} className="underline font-semibold">
+              Pivoter, dessiner…
+            </button>
             <button onClick={() => showHandout(null)} className="inline-flex items-center gap-1 underline">
               <X size={12} /> Masquer
             </button>
@@ -421,6 +466,8 @@ export default function App() {
       )}
 
       {backupsOpen && <BackupsDialog listBackups={listBackups} restore={restoreBackup} onClose={() => setBackupsOpen(false)} />}
+      {handout && projecting && <ProjectionAdmin handout={handout} overlay={overlay} setOverlay={setOverlay} onClose={() => setProjecting(false)} onStop={() => showHandout(null)} />}
+      {saved && <SaveDialog result={saved} folder={folder} onExport={exportCampaign} onClose={closeSaved} />}
       {ask && <TextDialog {...ask} onClose={() => setAsk(null)} />}
       {folder.found && <FolderImportDialog found={folder.found} onDone={folder.finishImport} />}
     </div>
