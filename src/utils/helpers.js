@@ -344,6 +344,14 @@ export function inRevealed(t, c) {
 /** Modificateur de jet de sauvegarde (maîtrise comprise) */
 export const saveMod = (e, ab) => mod(e.abilities?.[ab]) + (e.saves?.[ab] ? profBonus(e) : 0);
 
+/** Malus de l'épuisement aux tests d20 (attaques, JS, tests, initiative, jets contre la mort) :
+    −2 par niveau en 2024. En 2014, ce sont des désavantages par palier : rien à ajouter au jet. */
+export const d20Malus = (e, rules = "2024") => (rules === "2014" ? 0 : -2 * (e.exhaustion || 0));
+
+/** États qui font échouer automatiquement les JS de Force et de Dextérité */
+export const AUTO_FAIL_STR_DEX = ["paralyse", "petrifie", "etourdi", "inconscient"];
+export const autoFailsSave = (e, ab) => (ab === "for" || ab === "dex") && AUTO_FAIL_STR_DEX.some((c) => e.conditions?.includes(c));
+
 /** Lit une ligne d'attaque (« Épée longue : +5, 1d8+3 tranchant ») ; null si ni bonus ni dés */
 export function parseAttack(line) {
   const dice = line.match(/(?<!\p{L})\d*d\d+(?:\s*[+-]\s*\d+)*/iu);
@@ -454,11 +462,12 @@ export function removeToken(c, id, byId) {
 
 /** Lance les initiatives : monstres et PNJ toujours, PJ seulement s'ils n'en ont pas
     (les joueurs lancent souvent leur dé eux-mêmes). */
-export function rollInitiatives(c, byId) {
+export function rollInitiatives(c, byId, rules = "2024", rng = d) {
   const tokens = c.tokens.map((t) => {
     const e = byId[t.entityId];
     if (!e || (isShared(e) && t.init != null)) return t;
-    return { ...t, init: d(20) + (e.initBonus ?? mod(e.abilities.dex)) };
+    const f = fighterOf(t, e); // l'épuisement d'un monstre est propre à son pion
+    return { ...t, init: rng(20) + (e.initBonus ?? mod(e.abilities.dex)) + d20Malus(f, rules) };
   });
   return { ...c, tokens, started: true, round: 1, activeId: sortOrder(tokens, byId)[0]?.id ?? null };
 }

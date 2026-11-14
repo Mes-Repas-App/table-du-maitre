@@ -64,6 +64,7 @@ Le résultat se trouve dans `dist/`.
 ### Campagnes et sauvegarde
 - Plusieurs campagnes séparées : le menu à côté du titre permet d'en créer, d'en changer, de les renommer ou de les supprimer.
 - **Règles 2024 par défaut** (Manuel des joueurs 2024) ; une campagne peut passer aux règles 2014 depuis ce même menu. Cela change les textes des états, l'épuisement, le JS de concentration, les dés de vie au repos long et le bestiaire.
+- **Épuisement (2024)** : le malus de −2 par niveau s'applique tout seul aux jets lancés par l'appli (attaques, JS des dégâts de zone, jets contre la mort, initiative). Paralysé, pétrifié, étourdi et inconscient ratent d'office les JS de Force et de Dextérité des dégâts de zone.
 - **Annuler** (bouton ↶ ou Ctrl+Z) : revient sur les 50 dernières modifications ; les gestes rapprochés (glisser un pion, taper un nom) comptent pour une seule étape.
 - Sauvegarde automatique dans le navigateur (IndexedDB : plusieurs centaines de Mo, cartes et portraits compris). Une ancienne sauvegarde est reprise automatiquement. En cas d'échec, un bandeau rouge propose d'exporter.
 - Bouton **Sauvegarder** (ou Ctrl+S) : enregistre tout de suite, dans le navigateur et en écrasant le fichier de la campagne dans le dossier de sauvegarde s'il y en a un (puis le relit pour vérifier) ; bouton **Rafraîchir** pour recharger la campagne depuis ce fichier.

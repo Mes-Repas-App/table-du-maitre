@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { applyHp, nextTurn, removeToken, rollInitiatives, rollFormula, normalizeCampaign, profBonus, newEntity, newToken } from "./helpers.js";
 import { parseAttack, critFormula, takeDamage, inTemplate, inRevealed, saveMod } from "./helpers.js";
 import { fromOpen5e } from "../data/srd.js";
-import { spendHitDie, longRest, hitDieOf, tokenInTemplate, tickEffects, encounterDifficulty, crXp, placePath, sessionsMentioning } from "./helpers.js";
+import { spendHitDie, longRest, hitDieOf, tokenInTemplate, tickEffects, encounterDifficulty, crXp, placePath, sessionsMentioning, d20Malus, autoFailsSave } from "./helpers.js";
 import { fileNameFor, writeCampaignFile, readCampaignFile, fileSavedAt, changedElsewhere, listCampaignFiles, removeFile, fingerprint, matchCandidates, withoutSync } from "../sync/folder.js";
 
 test("Effets à durée : décompte au tour du lanceur, expiration", () => {
@@ -281,4 +281,17 @@ test("Pions de monstre : PV propres et noms numérotés", () => {
   const t2 = newToken(gob, [t1]);
   assert.deepEqual([t1.stats.name, t2.stats.name, t2.stats.hp], ["Gobelin", "Gobelin 2", 7]);
   assert.equal(newToken(newEntity("pc"), []).stats, null);
+});
+
+test("Épuisement 2024 sur les d20 et JS ratés d'office", () => {
+  const e = { ...newEntity("monster"), id: "m", exhaustion: 2, abilities: { ...newEntity("monster").abilities, dex: 14 } };
+  assert.equal(d20Malus(e, "2024"), -4);
+  assert.equal(d20Malus(e, "2014"), 0); // 2014 : désavantages par palier, pas de malus chiffré
+  assert.equal(autoFailsSave({ conditions: ["paralyse"] }, "dex"), true);
+  assert.equal(autoFailsSave({ conditions: ["paralyse"] }, "sag"), false);
+  assert.equal(autoFailsSave({ conditions: ["aterre"] }, "dex"), false);
+  // Initiative : épuisement propre au pion du monstre
+  const t = { ...newToken(e, []), stats: { ...newToken(e, []).stats, exhaustion: 3 } };
+  const c = rollInitiatives({ tokens: [t] }, { m: e }, "2024", () => 10);
+  assert.equal(c.tokens[0].init, 10 + 2 - 6);
 });

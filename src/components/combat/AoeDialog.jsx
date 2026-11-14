@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { X, Flame, Dices } from "lucide-react";
 import { ABILITIES } from "../../data/reference.js";
-import { rollFormula, saveMod, takeDamage, d, fmtMod } from "../../utils/helpers.js";
+import { rollFormula, saveMod, takeDamage, d, fmtMod, d20Malus, autoFailsSave } from "../../utils/helpers.js";
 import { inputStyle } from "../ui/form.jsx";
 import { useRules } from "../../hooks/useRules.js";
 import Portrait from "../ui/Portrait.jsx";
@@ -55,9 +55,12 @@ export default function AoeDialog({ pieces, initialIds, apply, onLog, onClose })
     setSaves(
       Object.fromEntries(
         targets.map(({ t, f }) => {
+          // Paralysé, pétrifié, étourdi, inconscient : JS de Force et Dextérité ratés d'office
+          if (autoFailsSave(f, ab)) return [t.id, { roll: "auto", ok: false, detail: "Échec automatique (état)", ab3 }];
           const n = d(20);
-          const roll = n + saveMod(f, ab);
-          return [t.id, { roll, ok: roll >= dc, detail: `${n}${fmtMod(saveMod(f, ab))}`, ab3 }];
+          const malus = d20Malus(f, rules);
+          const roll = n + saveMod(f, ab) + malus;
+          return [t.id, { roll, ok: roll >= dc, detail: `${n}${fmtMod(saveMod(f, ab))}${malus ? ` épuisement ${malus}` : ""}`, ab3 }];
         })
       )
     );

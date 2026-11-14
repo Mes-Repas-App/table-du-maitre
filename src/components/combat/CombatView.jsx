@@ -299,7 +299,7 @@ export default function CombatView({ combat, setCombat, entities, updateEntity, 
         <Tip text="Lance pour les monstres et PNJ. Les PJ gardent l'initiative déjà saisie (videz-la pour la relancer)." wide>
           <button
             onClick={() => {
-              setCombat((c) => rollInitiatives(c, byId));
+              setCombat((c) => rollInitiatives(c, byId, rules));
               log("Initiatives lancées — que le combat commence !");
             }}
             className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-semibold"

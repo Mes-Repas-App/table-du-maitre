@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Swords, Flame } from "lucide-react";
-import { parseAttack, critFormula, rollFormula, d, fmtMod } from "../../utils/helpers.js";
+import { parseAttack, critFormula, rollFormula, d, fmtMod, d20Malus } from "../../utils/helpers.js";
+import { useRules } from "../../hooks/useRules.js";
 
 /**
  * Attaques cliquables : chaque ligne « Nom : +5, 1d8+3 … » devient deux boutons.
@@ -9,16 +10,18 @@ import { parseAttack, critFormula, rollFormula, d, fmtMod } from "../../utils/he
 export default function AttackList({ f, onLog }) {
   const [last, setLast] = useState({}); // ligne → dernier résultat affiché
   const [crit, setCrit] = useState({}); // ligne → prochain jet de dégâts critique
+  const rules = useRules();
   const lines = (f.attacks || "").split("\n").filter((l) => l.trim());
   if (!lines.length) return null;
 
   const attack = (i, a) => {
     const n = d(20);
-    const total = n + (a.bonus || 0);
+    const malus = d20Malus(f, rules);
+    const total = n + (a.bonus || 0) + malus;
     const tag = n === 20 ? " — CRITIQUE !" : n === 1 ? " — échec critique" : "";
     setLast((p) => ({ ...p, [i]: `${total}${tag}` }));
     setCrit((p) => ({ ...p, [i]: n === 20 }));
-    onLog?.(`${f.name} — ${a.name} : ${total} pour toucher (d20 = ${n}${a.bonus ? ` ${fmtMod(a.bonus)}` : ""})${tag}`);
+    onLog?.(`${f.name} — ${a.name} : ${total} pour toucher (d20 = ${n}${a.bonus ? ` ${fmtMod(a.bonus)}` : ""}${malus ? `, épuisement ${malus}` : ""})${tag}`);
   };
 
   const damage = (i, a) => {

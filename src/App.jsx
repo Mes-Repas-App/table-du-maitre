@@ -1,8 +1,8 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { Users, Ghost, Skull, Swords, Crosshair, Download, Upload, AlertTriangle, Undo2, ScrollText, Map as MapIcon, MonitorPlay, X, Save, RefreshCw } from "lucide-react";
 import { RACES, CLASSES, BACKGROUNDS } from "./data/reference.js";
-import { uid, withLog, PLAYER_CHANNEL, openPlayerScreen, normalizeCampaign } from "./utils/helpers.js";
-import { matchCandidates, hasContent, withoutSync } from "./sync/folder.js";
+import { uid, withLog, PLAYER_CHANNEL, openPlayerScreen, normalizeCampaign, removeToken } from "./utils/helpers.js";
+import { matchCandidates, hasContent, withoutSync, fileNameFor } from "./sync/folder.js";
 import { useCampaign } from "./hooks/useCampaign.js";
 import { RulesContext } from "./hooks/useRules.js";
 import { useFolderBackup } from "./hooks/useFolderBackup.js";
@@ -234,11 +234,15 @@ export default function App() {
 
   const current = campaigns.find((c) => c.id === currentId);
   const onCampaignMenu = async (v) => {
+    // Le nom d'une campagne est aussi le nom de son fichier dans le dossier de sauvegarde : il doit être unique
+    const nameTaken = (except) => (name) =>
+      campaigns.some((c) => c.id !== except && fileNameFor(c.name).toLowerCase() === fileNameFor(name).toLowerCase()) ? "Une autre campagne porte déjà ce nom." : null;
     if (v === "__new") {
       setAsk({
         title: "Nom de la nouvelle campagne",
         initial: "Nouvelle campagne",
         okLabel: "Créer",
+        validate: nameTaken(null),
         onOk: async (name) => {
           await createCampaign(name);
           resetView();
@@ -246,7 +250,7 @@ export default function App() {
       });
       return;
     } else if (v === "__rename") {
-      setAsk({ title: "Renommer la campagne", initial: current?.name, okLabel: "Renommer", onOk: renameCampaign });
+      setAsk({ title: "Renommer la campagne", initial: current?.name, okLabel: "Renommer", validate: nameTaken(currentId), onOk: renameCampaign });
       return;
     } else if (v === "__rules") {
       const next = settings.rules === "2024" ? "2014" : "2024";
@@ -540,7 +544,20 @@ export default function App() {
             setEntities((p) =>
               p.filter((x) => x.id !== editing.id).map((x) => (x.relations?.some((r) => r.targetId === editing.id) ? { ...x, relations: x.relations.filter((r) => r.targetId !== editing.id) } : x))
             );
-            setCombats((p) => p.map((c) => ({ ...c, tokens: c.tokens.filter((t) => t.entityId !== editing.id) })));
+            // Ses pions quittent les combats (le tour passe au suivant, leurs effets disparaissent)
+            const byId = Object.fromEntries(entities.map((x) => [x.id, x]));
+            setCombats((p) => p.map((c) => c.tokens.filter((t) => t.entityId === editing.id).reduce((acc, t) => removeToken(acc, t.id, byId), c)));
+            // … et plus aucun lieu, session ni préparation ne pointe vers une fiche disparue
+            const gone = editing.id;
+            setWorld((p) => p.map((w) => (w.residents?.includes(gone) ? { ...w, residents: w.residents.filter((id) => id !== gone) } : w)));
+            setSessions((p) =>
+              p.map((s) => ({
+                ...s,
+                present: s.present.filter((id) => id !== gone),
+                prep: s.prep.map((x) => (x.refId === gone ? { ...x, refId: null } : x)),
+                scenes: s.scenes.map((sc) => (sc.entities.includes(gone) ? { ...sc, entities: sc.entities.filter((id) => id !== gone) } : sc)),
+              }))
+            );
             setEditingId(null);
           }}
           onDuplicate={() => {

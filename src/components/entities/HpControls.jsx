@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Skull, Brain, Dices } from "lucide-react";
-import { applyHp, takeDamage, concentrationDc, d } from "../../utils/helpers.js";
+import { applyHp, takeDamage, concentrationDc, d, d20Malus } from "../../utils/helpers.js";
 import { useRules } from "../../hooks/useRules.js";
 import { inputStyle, NumInput } from "../ui/form.jsx";
 import Tip from "../ui/Tip.jsx";
@@ -34,9 +34,12 @@ export default function HpControls({ e, update, onLog }) {
       onLog?.(`${e.name} : jet contre la mort 20 — reprend conscience à 1 PV !`);
       return;
     }
-    const next = r >= 10 ? { ...ds, ok: Math.min(3, ds.ok + 1) } : { ...ds, ko: Math.min(3, ds.ko + (r === 1 ? 2 : 1)) };
+    // 20 et 1 se lisent sur le dé ; la réussite (10+) tient compte de l'épuisement (règles 2024)
+    const malus = d20Malus(e, rules);
+    const total = r + malus;
+    const next = total >= 10 && r !== 1 ? { ...ds, ok: Math.min(3, ds.ok + 1) } : { ...ds, ko: Math.min(3, ds.ko + (r === 1 ? 2 : 1)) };
     update({ deathSaves: next });
-    onLog?.(`${e.name} : jet contre la mort ${r} — ${r >= 10 ? "réussite" : r === 1 ? "deux échecs" : "échec"}`);
+    onLog?.(`${e.name} : jet contre la mort ${r}${malus ? ` (épuisement ${malus} → ${total})` : ""} — ${r === 1 ? "deux échecs" : total >= 10 ? "réussite" : "échec"}`);
   };
 
   const btn = (delta, hue) => (
